@@ -57,7 +57,7 @@ int main() {
     params.plant_count = make_int2(row_number, plant_number);
     params.leaf_size = make_vec2(l_leaf, w_leaf);
     params.leaf_subdivisions = make_int2(3, 3);
-    params.leaf_area_density = 1.f;
+    params.leaf_area_density = 0.1f;
 
     // Create the crowns
     canopygenerator.buildCanopy(params);
@@ -84,6 +84,7 @@ int main() {
 
     // *** Step 5: Setting Up the Radiation Model *** //
     RadiationModel radiation(&context);
+    radiation.disableMessages();
 
     uint SunSource = radiation.addSunSphereRadiationSource();
 
@@ -121,15 +122,17 @@ int main() {
     energybalance.addRadiationBand("NIR");
     energybalance.addRadiationBand("LW");
 
-    BLConductanceModel boundarylayerconductance(&context);
+    energybalance.disableMessages();
 
+    BLConductanceModel boundarylayerconductance(&context);
+    boundarylayerconductance.disableMessages();
     boundarylayerconductance.setBoundaryLayerModel(ground_UUIDs, "Ground");
     boundarylayerconductance.setBoundaryLayerModel(leaf_UUIDs, "Pohlhausen");
 
     //*** Step 7: Setting Up the Stomatal Conductance Model ***//
 
     StomatalConductanceModel stomatalconductance(&context);
-
+    stomatalconductance.disableMessages();
     BMFcoefficients bmfc;
     stomatalconductance.setBMFCoefficientsFromLibrary("almond");
 
@@ -147,10 +150,12 @@ int main() {
 
 
 
+
     //*** Step 8: Setting Up Photosynthesis Model ***//
 
     PhotosynthesisModel photosynthesis(&context);
     photosynthesis.setFarquharCoefficientsFromLibrary("almond");
+    photosynthesis.disableMessages();
 
     // *** Step 9: Reading in Our Timeseries Data *** //
 
@@ -212,7 +217,7 @@ int main() {
             float E, A, WUE, psi;
             context.getPrimitiveData(UUID, "latent_flux", E);
             context.getPrimitiveData(UUID, "net_photosynthesis", A);
-            planthydraulics.getStemWaterPotentialOfPlant(0);
+            psi_canopy = planthydraulics.getStemWaterPotentialOfPlant(0);
             E_canopy += E / 44000 * 1000; // mmol H2O / m^2 / sec
             A_canopy += A; // umol CO2 / m^2 / sec
 
@@ -222,6 +227,7 @@ int main() {
         float WUE_canopy = A_canopy / E_canopy; // umol CO2/mmol H2O
 
         std::cout << "WUE of the canopy = " << WUE_canopy << " umol CO2/mmol H2O" << std::endl;
+        std::cout << "Stem water potential of the canopy = " << psi_canopy << std::endl;
 
         // *** Step 12: Visualization *** //
         // This will open the visualizer window for each time step. Close it to proceed to the next time step.
