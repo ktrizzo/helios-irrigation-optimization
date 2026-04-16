@@ -141,6 +141,7 @@ int main() {
     phmc.setRootHydraulicConductance(0.0055f);
 
     planthydraulics.groupPrimitivesIntoPlantObject(leaf_UUIDs);
+    context.setPrimitiveData(leaf_UUIDs, "plantID", 0);
     planthydraulics.setModelCoefficients(phmc);
 
 
