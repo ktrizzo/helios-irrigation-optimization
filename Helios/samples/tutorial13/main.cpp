@@ -9,10 +9,11 @@
 #include "SolarPosition.h"
 #include "StomatalConductanceModel.h"
 #include "Visualizer.h"
+#include "ParameterOptimization.h"
 
 using namespace helios;
 
-int main() {
+auto sim = [](const ParametersToOptimize& p) {
 
     // *** Step 2: Defining the Context *** //
 
@@ -140,8 +141,8 @@ int main() {
     PlantHydraulicsModelCoefficients phmc;
     phmc.setLeafHydraulicCapacitanceFromLibrary("walnut");
     phmc.setLeafHydraulicConductance(0.0055f,-1.f,1.f);
-    phmc.setStemHydraulicConductance(0.055f);
-    phmc.setRootHydraulicConductance(0.055f);
+    phmc.setStemHydraulicConductance(0.02f);
+    phmc.setRootHydraulicConductance(0.02f);
 
     planthydraulics.groupPrimitivesIntoPlantObject(leaf_UUIDs);
     context.setPrimitiveData(leaf_UUIDs, "plantID", 0);
@@ -162,7 +163,7 @@ int main() {
     context.loadXML("../xml/6_20_2024_CIMIS.xml");
 
     std::vector<float> psis = {};
-
+    float WUE_canopy;
     int startHour = 7;
     int endHour = 18;
     for (int hour = startHour; hour < endHour; hour++) {
@@ -199,6 +200,8 @@ int main() {
 
         radiation.runBand({"PAR", "NIR", "LW"});
 
+
+
         // Run the longwave band, stomatal conductance plugin, and energy balance plugin again to update primitive temperature values
         for (int i=0;i<3;i++){
             energybalance.run();
@@ -232,7 +235,7 @@ int main() {
         psi_canopy = planthydraulics.getStemWaterPotentialOfPlant(0);
         psis.push_back(psi_canopy);
 
-        float WUE_canopy = A_canopy / E_canopy; // umol CO2/mmol H2O
+        WUE_canopy = A_canopy / E_canopy; // umol CO2/mmol H2O
 
         std::cout << "WUE of the canopy = " << WUE_canopy << " umol CO2/mmol H2O" << std::endl;
         std::cout << "Stem water potential of the canopy = " << psi_canopy << std::endl;
@@ -256,5 +259,16 @@ int main() {
         printf("%d %f\n",i+startHour,psis.at(i));
     }
 
-    return 0;
+    return WUE_canopy;
+};
+
+int main() {
+    ParameterOptimization popt;
+    ParametersToOptimize params = {
+        {"gs", {0.f, 0.01f, 1.f, ParameterType::FLOAT}},
+    };
+
+    CMAES cmaes;
+    popt.setAlgorithm(cmaes);
+    auto result = popt.run(sim,params);
 }
