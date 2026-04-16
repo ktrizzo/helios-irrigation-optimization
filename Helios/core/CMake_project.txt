@@ -1,0 +1,3 @@
+# This file should not be referenced and should instead reference CMake_project.cmake.
+# This file is retained for legacy purposed.
+include( "${CMAKE_CURRENT_LIST_DIR}/CMake_project.cmake" )

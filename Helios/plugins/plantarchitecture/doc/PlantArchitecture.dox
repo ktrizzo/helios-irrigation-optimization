@@ -1,0 +1,1161 @@
+/*! \page PlantArchitectureDoc Plant Architecture Model Plugin Documentation
+
+\image html PlantArchitecture_cover_image.png
+
+\tableofcontents
+
+<b>Known Issues</b>
+
+- This plug-in is under active development and changes much more frequently than other plug-ins, and backward compatability is not necessarily maintained. Please check the release notes for each version to see what has changed and how to modify your code to accommodate changes that break backward compatability.
+- Some plant models can be compute intensive to run, particularly growing trees over multiple years. Building in 'Release' mode should speed things up significantly.
+- Some plant models are not entirely complete and do not contain all phenological stages.
+
+<table>
+    <tr><th>Dependencies</th><td>None</td></tr>
+    <tr><th>CMakeLists.txt</th><td>set( PLUGINS "plantarchitecture" )</td></tr>
+    <tr><th>Header File</th><td>#include "PlantArchitecture.h"</td></tr>
+    <tr><th>Class</th><td>\ref PlantArchitecture</td></tr>
+</table>
+
+\section PlantArchConstructor Class Constructor
+
+<table>
+    <tr><th>Constructors</th></tr>
+    <tr><td>\ref PlantArchitecture( helios::Context* )</td></tr>
+</table>
+
+\section PlantArchVarsAndProps Primitive Data
+
+<!--
+
+\subsection PlantArchInputData Input Primitive Data
+
+<table>
+<tr><th>Primitive Data Label</th><th>Symbol</th><th>Units</th><th>Data Type</th><th>Description</th><th>Available Plug-ins</th><th>Default Value</th></tr>
+</table>
+
+-->
+
+\subsection PlantArchOutputData Optional Output Object Data
+
+<table>
+    <tr><th>Object Data Label</th><th>Data Type</th><th>Description</th></tr>
+    <tr><td>plantID</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">int</span>\endhtmlonly</td><td>Object ID of plant the primitive belongs to (used for image labeling).</td></tr>
+    <tr><td>plant_name</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">string</span>\endhtmlonly</td><td>Name of the plant species/model (e.g., "almond", "tomato").</td></tr>
+    <tr><td>plant_type</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">string</span>\endhtmlonly</td><td>Type/species of the plant as defined in the PlantLibrary.</td></tr>
+    <tr><td>plant_height</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Current height of the plant.</td></tr>
+    <tr><td>phenology_stage</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">int</span>\endhtmlonly</td><td>Current phenological stage of the plant (e.g., vegetative, flowering, fruiting, senescent).</td></tr>
+    <tr><td>leafID</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">int</span>\endhtmlonly</td><td>Object ID of leaf the primitive belongs to (used for image labeling).</td></tr>
+    <tr><td>peduncleID</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">int</span>\endhtmlonly</td><td>Object ID of peduncle the primitive belongs to (used for image labeling). Not defined if there are no peduncles.</td></tr>
+    <tr><td>closedflowerID</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">int</span>\endhtmlonly</td><td>Object ID of flower (closed) the primitive belongs to (used for image labeling). Not defined if there are no closed flowers.</td></tr>
+    <tr><td>openflowerID</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">int</span>\endhtmlonly</td><td>Object ID of flower (open) the primitive belongs to (used for image labeling). Not defined if there are no open flowers.</td></tr>
+    <tr><td>fruitID</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">int</span>\endhtmlonly</td><td>Object ID of fruit the primitive belongs to (used for image labeling). Not defined if there are no fruits.</td></tr>
+    <tr><td>rank</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">int</span>\endhtmlonly</td><td>Rank of shoot object belongs to.</td></tr>
+    <tr><td>age</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Age of the organ that the object belongs to (e.g., a leaf).</td></tr>
+    <tr><td>carbohydrate_concentration</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Concentration of carbohydrates in the shoot (mol C/m³). Value is constant along the shoot, and zero for non-internode organs.</td></tr>
+    <tr><td>leaf_area</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Total leaf area associated with the shoot (m²).</td></tr>
+    <tr><td>nitrogen_stress_factor</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Nitrogen stress factor (0-1) calculated by the nitrogen model. Written to plant objects. 1.0 = no stress, 0.0 = severe stress. Only present when nitrogen model is enabled.</td></tr>
+    <tr><td>leaf_nitrogen_gN_m2</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Leaf nitrogen content per unit area (g N/m²). Written to leaf objects. Only present when nitrogen model is enabled.</td></tr>
+</table>
+
+To enable optional output object data, use:
+
+~~~~~~
+PlantArchitecture plantarchitecture(&context);
+
+plantarchitecture.optionalOutputData("plantID"); //insert appropriate label from the table above
+~~~~~~
+
+You can also enable multiple fields at the same time:
+
+~~~~~~
+plantarchitecture.optionalOutputData({"plantID","leafID","flowerID"});
+~~~~~~
+
+or enable them all by passing the string "all":
+
+~~~~~~
+plantarchitecture.optionalOutputData("all");
+~~~~~~
+
+\section PlantArchOverview Plug-in Overview
+
+This plug-in provides a generalized framework for creating dynamic procedural plant models for a very wide range of species. The plug-in comes with a library of a number of different plant models, which have a common set of parameters that can be adjusted by the user. Parameters defining the plant can be set to constant values, or randomized based on a number of different distributions. The plant model can be grown over time, and will transition through different phenological stages such as dormancy, flowering, fruit set, and senescence.  Users can also create their own plant models by changing model parameters, or build custom plants branch-by-branch.
+
+The methodology behind the plant architecture model is described in the technical report found here: <a href="http://arxiv.org/abs/2512.17966">http://arxiv.org/abs/2512.17966</a>
+
+The next section provides information on how to load existing models from the library and grow them over time, which is likely how most users will interact with the plug-in. The following sections provide more detailed information on the parameters that define the plant model, the structure of the plant model, and how to modify parameters of existing models or create custom plant models from scratch.
+
+\section PlantArchGettingStarted Getting Started with the Existing Plant Library
+
+\subsection PlantArchBuild Existing Plant Library
+
+A number of plant models are available in the plant architecture library, which can be created based on default parameters, or parameters modified by the user. Plant models available in the library are given in the table below.
+
+| Plant Type/Species                       | Variety/Variation                  | Plant type string argument | %Shoot types                                       |
+|------------------------------------------|------------------------------------|----------------------------|----------------------------------------------------|
+| Almond Tree (*Prunus dulcis*)            | Nonpareil                          | "almond"                   | trunk, scaffold, proleptic                         |
+| Apple Tree (*Malus pumila*)              | Fuji                               | "apple"                    | trunk, proleptic                                   |
+| Bindweed (*Convolvulus arvensis*)        | generic                            | "bindweed"                 | base, offshoots, children                          |
+| Butter Lettuce (*Lactuca sativa*)        | generic                            | "butterlettuce"            | mainstem                                           |
+| Capsicum Pepper (*Capsicum annuum*)      | generic                            | "capsicum"                 | mainstem                                           |
+| Cheeseweed (*Malva neglecta*)            | generic                            | "cheeseweed"               | mainstem                                           |
+| Common Bean (*Phaseolus vulgaris*)       | upright growth habit (determinate) | "bean"                     | unifoliate, trifoliate                             |
+| Cowpea (*Vigna unguiculata*)             | upright growth habit (determinate) | "cowpea"                   | unifoliate, trifoliate                             |
+| Eastern Redbud (*Cercis canadensis*)     | generic                            | "easternredbud"            | eastern_redubud_trunk, eastern_redbud_shoot        |
+| Grapevine (*Vitis vinifera*)             | VSP trellis                        | "grapevine_VSP"            | grapevine_trunk, grapevine_cane, grapevine_shoot   |
+| Grapevine (*Vitis vinifera*)             | Wye trellis (quadrilateral)        | "grapevine_Wye"            | grapevine_trunk, grapevine_cordon, grapevine_shoot |
+| Ground Cherry (*Physalis philadelphica*) | generic                            | "groundcherryweed"         | mainstem                                           |
+| Maize (*Zea mays*)                       | generic                            | "maize"                    | mainstem                                           |
+| Olive Tree (*Olea europaea*)             | generic                            | "olive"                    | trunk, scaffold, proleptic                         |
+| Pistachio Tree (*Pistachia vera*)        | generic                            | "pistachio"                | trunk, proleptic                                   |
+| Puncturevine (*Tribulus terrestris*)     | generic                            | "puncturevine"             | base, offshoots, children                          |
+| Rice (*Oryza sativa*)                    | generic                            | "rice"                     | mainstem                                           |
+| Sorghum (*Sorghum bicolor*)              | grain sorghum                      | "sorghum"                  | mainstem                                           |
+| Soybean (*Glycine max*)                  | upright growth habit (determinate) | "soybean"                  | unifoliate, trifoliate                             |
+| Strawberry (*Fragaria × ananassa*)       | generic                            | "strawberry"               | mainstem                                           |
+| Sugar Beet (*Beta vulgaris*)             | generic                            | "sugarbeet"                | mainstem                                           |
+| Tomato (*Solanum lycopersicum*)          | determinate growth                 | "tomato"                   | mainstem                                           |
+| Cherry Tomato (*Solanum lycopersicum*)   | upright trained                    | "cherrytomato"             | mainstem                                           |
+| Walnut Tree (*Juglans regia*)            | generic                            | "walnut"                   | trunk, scaffold, proleptic                         |
+| Wheat (*Triticum aestivum*)              | generic                            | "wheat"                    | mainstem                                           |
+
+\subsection PlantArchBuild_default Loading a Plant from the Library with Default Parameters
+
+Loading a plant from the library with default parameters is relatively simple, and requires only declaring the \ref PlantArchitecture class, loading the model using the \ref PlantArchitecture::loadPlantModelFromLibrary() method (which takes a string argument for the plant model as listed in the table above), and calling the \ref PlantArchitecture::buildPlantInstanceFromLibrary() method. The method takes two arguments: 1) the Cartesian (x,y,z) position of the plant base, and 2) the age of the plant in days. A code example is given below.
+
+~~~~~~
+#include "PlantArchitecture.h"
+using namespace helios;
+
+int main(){
+
+    Context context;
+
+    PlantArchitecture plantarchitecture(&context);
+
+    plantarchitecture.loadPlantModelFromLibrary( "bean" );
+
+    float age = 45;
+    plantarchitecture.buildPlantInstanceFromLibrary( nullorigin, age );
+
+    return 0;
+}
+~~~~~~
+
+This will create a default bean plant that is 45 days old (i.e., 45 days since emergence).
+
+Multiple plants can be created manually by calling the \ref PlantArchitecture::buildPlantInstanceFromLibrary() method multiple times with different base positions. There is also a method available to build a canopy of regularly-spaced plants: \ref PlantArchitecture::buildPlantCanopyFromLibrary().
+
+~~~~~~
+#include "PlantArchitecture.h"
+using namespace helios;
+
+int main(){
+
+    Context context;
+
+    PlantArchitecture plantarchitecture(&context);
+
+    plantarchitecture.loadPlantModelFromLibrary( "bean" );
+
+    vec3 canopy_center = nullorigin;
+    vec2 plant_spacing(0.5, 0.15);
+    int2 plant_count(3,3);
+    float age = 45;
+    plantarchitecture.buildPlantCanopyFromLibrary( canopy_center, plant_spacing, plant_count, age );
+
+    return 0;
+}
+~~~~~~
+
+\subsection PlantArchBuildParams Customizing Plant Training System Parameters
+
+The plant library supports customizable training system parameters that allow you to specify species-specific architectural features without modifying the source code. These parameters control aspects like trunk height, trellis dimensions, scaffold branch configuration, and other training-related characteristics.
+
+\subsubsection PlantArchBuildParamsAPI Using Build Parameters
+
+Build parameters are specified as an optional `std::map<std::string, float>` argument to the build functions:
+
+~~~~~~
+#include "PlantArchitecture.h"
+using namespace helios;
+
+int main(){
+
+    Context context;
+    PlantArchitecture plantarchitecture(&context);
+
+    plantarchitecture.loadPlantModelFromLibrary( "grapevine_VSP" );
+
+    // Customize training parameters
+    std::map<std::string, float> build_params = {
+        {"vine_spacing", 3.0},       // 3.0 m vine spacing (canes auto-sized)
+        {"trunk_height", 0.15}       // 15 cm trunk height
+    };
+
+    vec3 base_position = nullorigin;
+    float age = 0;
+    plantarchitecture.buildPlantInstanceFromLibrary( base_position, age, build_params );
+
+    return 0;
+}
+~~~~~~
+
+Build parameters can also be used with the canopy building methods:
+
+~~~~~~
+std::map<std::string, float> build_params = {
+    {"trunk_height", 0.9},         // 90 cm tall trunk
+    {"num_scaffolds", 5.0},        // 5 scaffold branches
+    {"scaffold_angle", 45.0}       // 45 degree scaffold angle
+};
+
+plantarchitecture.buildPlantCanopyFromLibrary( canopy_center, plant_spacing, plant_count, age, 1.0, build_params );
+~~~~~~
+
+\subsubsection PlantArchBuildParamsAvailable Available Parameters by Species
+
+<b>Grapevine VSP (grapevine_VSP)</b>
+
+The VSP grapevine model uses vine spacing to automatically calculate appropriate cane length and node counts.
+
+| Parameter | Default | Valid Range | Units | Description |
+|-----------|---------|-------------|-------|-------------|
+| vine_spacing | 2.4 | 0.5-5.0 | m | Plant-to-plant spacing (cane nodes auto-calculated to span half this distance) |
+| trunk_height | 0.1 | 0.05-1.0 | m | Total trunk height |
+
+<b>Grapevine Wye (grapevine_Wye)</b>
+
+The Wye grapevine model parameters control the trellis system geometry.
+
+| Parameter | Default | Valid Range | Units | Description |
+|-----------|---------|-------------|-------|-------------|
+| trunk_height | 0.165 | 0.05-1.0 | m | Total trunk height |
+| cordon_spacing | 0.6 | 0.2-2.0 | m | Spacing between cordon rows (fruiting wires) |
+| vine_spacing | 1.8 | 0.5-5.0 | m | Plant-to-plant spacing along row |
+| catch_wire_height | 2.1 | 0.5-4.0 | m | Absolute height of catch wires |
+
+<b>Tree Species (almond, apple, walnut, pistachio)</b>
+
+Tree species use a simplified height-based training system. The code automatically calculates trunk node counts based on species-specific internode lengths (almond: 3cm, apple: 4cm, walnut: 4cm, pistachio: 5cm).
+
+| Parameter | Default | Valid Range | Units | Description |
+|-----------|---------|-------------|-------|-------------|
+| trunk_height | 0.6-1.0* | 0.1-3.0 | m | Total desired trunk height |
+| num_scaffolds | 4 | 2-8 | - | Number of scaffold branches |
+| scaffold_angle | 40-50* | 20-70 | deg | Scaffold branch angle from vertical |
+
+*Default values: almond/apple: 0.6m trunk, 40° scaffolds; walnut: 0.8m trunk, 50° scaffolds; pistachio: 1.0m trunk, 50° scaffolds
+
+\subsubsection PlantArchBuildParamsValidation Parameter Validation
+
+All build parameters are validated to ensure they fall within acceptable ranges. If a parameter value is outside the valid range, a `helios_runtime_error` will be thrown with a clear error message indicating the parameter name, the provided value, and the valid range.
+
+Parameters specified as floats will be automatically cast to unsigned integers where appropriate (e.g., node counts, scaffold counts).
+
+\subsubsection PlantArchBuildParamsExamples Common Use Case Examples
+
+<b>Example 1: Grapevine VSP with Custom Spacing</b>
+~~~~~~
+std::map<std::string, float> params = {
+    {"vine_spacing", 3.0},        // 3.0 m between plants (canes auto-sized to span 1.5 m each)
+    {"trunk_height", 0.15}        // 15 cm trunk height
+};
+plantarchitecture.buildPlantInstanceFromLibrary( position, age, params );
+~~~~~~
+
+<b>Example 2: Almond Tree with Custom Training</b>
+~~~~~~
+std::map<std::string, float> params = {
+    {"trunk_height", 0.9},        // 90 cm tall trunk
+    {"num_scaffolds", 5},         // 5 scaffold branches
+    {"scaffold_angle", 35.0}      // 35 degree scaffold angle
+};
+plantarchitecture.buildPlantInstanceFromLibrary( position, 5000, params );  // 5000 days old
+~~~~~~
+
+<b>Example 3: Grapevine Wye with Modified Trellis</b>
+~~~~~~
+std::map<std::string, float> params = {
+    {"trunk_height", 0.2},          // 20 cm trunk height
+    {"cordon_spacing", 0.8},        // 80 cm between cordon rows
+    {"vine_spacing", 2.2},          // 2.2 m between plants
+    {"catch_wire_height", 2.5}      // 2.5 m catch wire height
+};
+plantarchitecture.buildPlantInstanceFromLibrary( position, age, params );
+~~~~~~
+
+\subsection PlantArchGrowth Growing the Model over Time
+
+The model can be grown over time by calling the \ref PlantArchitecture::advanceTime() method after the plant instance has been created, where the argument to this method is the timestep to advance in days. The timestep value can be larger than the phyllochron, such that multiple phytomers and shoots can be produced in a single call to \ref PlantArchitecture::advanceTime().
+
+~~~~~~
+plantarchitecture.advanceTime( 10 );
+~~~~~~
+
+Each plant model has a maximum supported age, which is listed in the table of the next section.
+
+Annual plants generally start as seedlings and emerge from the ground at time = 0. Perennial plants typically are a few years old at time = 0, which is generally the point when management training practices (e.g., pruning, heading) have been done and the plant is allowed to grow freely.
+
+Each time \ref PlantArchitecture::advanceTime() is called, the geometry is updated in the Context, which incurs substantial computational cost. Therefore, it is recommended to advance time over the largest increment possible. For example, if growing over 1 year it would not be efficient to call \ref PlantArchitecture::advanceTime() 365 times with a timestep of 1 day, but rather with a single call with timestep of 365 days.
+
+\subsection PlantArchPheno Growth Phenology
+
+As the plant grows over time, it will transition to different phenological stages such as breaking dormancy, flowering, fruit set, etc. Each model has a default set of values that controls how long it takes to transition to these phenological states. Each state is described in the table below.
+
+| Phenological Threshold | Description |
+| ------| ------ |
+| time_to_dormancy_break | Time required to break dormancy starting from the time of entering dormancy (or since the start of the simulation if starting dormant). |
+| time_to_flower_initiation | Time from emergence/dormancy required to reach flower creation (closed flowers). |
+| time_to_flower_opening | Time from flower initiation required to reach flower opening (open flowers). (If flower initiation was skipped, time is relative to emergence/dormancy). |
+| time_to_fruit_set | Time from flower opening required to reach fruit set. (If flower opening or initiation was skipped, time is relative to previous phenological stage). |
+| time_to_fruit_maturity | Time from fruit set required to reach maturity. (If fruit set was skipped, time is relative to previous phenological stage). |
+| time_to_senescence | Time from emergence/dormancy required to reach senescence. At senescence, leaves and fruit will be removed, and the plant will become dormant. |
+
+Default values for each species in the plant library are given in the table below. Values are in units of days.
+
+The phenological cycle starts when the plant enters dormancy, and thus a period of \htmlonly<span style="font-family: Courier, monospace; color: blue;">time_to_dormancy_break</span>\endhtmlonly must pass before the plant starts to actively grow.
+
+Plant type string argument | time_to_dormancy_break | time_to_flower_initiation | time_to_flower_opening | time_to_fruit_set | time_to_fruit_maturity | time_to_senescence | Age at time = 0 | Maximum age         |
+| ------| ------ | ------ | ------ | ------ | ------ | ------ | ------ |---------------------|
+"almond" | 165 | -1 | 3 | 7 | 20 | 200 | 3 years | 1825 days (5 years) |
+"apple" | 165 | -1 | 3 | 7 | 30 | 200 | 3 years | 1460 days (4 years) |
+"bean" | 0 | 40 | 5 | 5 | 30 | \f$\infty\f$ | 0 | 365 days (1 year)   |
+"bindweed" | 0 | -1 | 14 | -1 | -1 | \f$\infty\f$ | 0 | 50 days             |
+"butterlettuce" | 0 | -1 | -1 | -1 | -1 | \f$\infty\f$ | 0 | 365 days (1 year)   |
+"cheeseweed" | 0 | -1 | -1 | -1 | -1 | \f$\infty\f$ | 0 | 40 days             |
+"cowpea" | 0 | 40 | 5 | 5 | 30 | \f$\infty\f$ | 0 | 365 days (1 year)   |
+"easternredbud" | 165 | -1 | 3 | 7 | 30 | 200 | 2 years | 1460 days (4 years) |
+"grapevine_VSP" | 165 | -1 | -1 | 45 | 45 | 200 | 3 years | 365 days (1 year)   |
+"maize" | 0 | -1 | -1 | 4 | 10 | \f$\infty\f$ | 0 | 365 days (1 year)   |
+"olive" | 165 | -1 | 3 | 7 | 20 | 200 | 3 years | 1825 days (5 years) |
+"pistachio" | 165 | -1 | 3 | 7 | 20 | 200 | 3 years | 1460 days (4 years) |
+"puncturevine" | 0 | -1 | 14 | -1 | -1 | \f$\infty\f$ | 0 | 45 days             |
+"rice" | 0 | -1 | -1 | 4 | 15 | \f$\infty\f$ | 0 | 365 days (1 year)   |
+"sorghum" | 0 | -1 | -1 | 4 | 10 | \f$\infty\f$ | 0 | 365 days (1 year)   |
+"soybean" | 0 | 40 | 5 | 5 | 30 | \f$\infty\f$ | 0 | 365 days (1 year)   |
+"sugarbeet" | 0 | -1 | -1 | -1 | -1 | \f$\infty\f$ | 0 | 365 days (1 year)   |
+"tomato" | 0 | 40 | 5 | 5 | 30 | \f$\infty\f$ | 0 | 365 days (1 year)   |
+"walnut" | 165 | -1 | 3 | 7 | 20 | 200 | 3 years | 1095 days (3 years) |
+"wheat" | 0 | -1 | -1 | 4 | 10 | \f$\infty\f$ | 0 | 365 days (1 year)   |
+
+\subsection PlantArchCollision Collision Avoidance
+
+The plant architecture model integrates the Helios collision detection plug-in to enable two primary types of object collision avoidance: 1) "soft" avoidance of other plant organs during growth in order to create a plant structure that generally minimizes collisions with itself and other plants while also tending to fill open space (i.e., space colonization), and 2) "hard" avoidance of solid obstacle objects that should not be intersected like the ground or buildings.
+
+Both types of collision avoidance use the concept of a perception cone at the shoot apex (see figure below). The parameters of the cone are user-defined, which determine the "look-ahead distance" (length of cone axis) and the cone field of view. Ray-tracing calculations are used to determine objects 'sensed' within the cone view. It should be noted that the parameters of the perception cone affects model computational expense. A larger cone will tend to result in reduced performance because more intersection queries will be needed in general. If the cone is too small, model accuracy may be sacrificed because the plant may not adequately perceive obstacles and thus growth may not be appropriately modified.
+
+\image html collision_perception_cone.jpeg "Schematic representation of the perception cone used to determine potential collisions at the shoot apex in order to modify the internode and/or petiole growth direction to minimize or eliminate collisions."
+
+The collision detection framework utilizes several optimizations to improve performance. It uses OpenMP parallelization to accelerate ray-tracing operations associated with perception cone object detection. It also uses an efficient plant-centric bounding volume hierarchy (BVH) to rapidly cull distant geometry during ray intersection traversals.
+
+\image html collision_types.jpeg "Schematic representation of how the perception cone is utilized to determine the augmented (target) growth direction. (a) 'hard' collision avoidance: perception cone (pink) points in the initial direction of internode, petiole, or peduncle growth. The normal vector of the nearest object detected in the cone is used to calculate a target growth direction perpendicular to the object normal. (b) 'soft' collision avoidance: hemispherical projection of the perception cone field of view. Target growth direction is determined based on a weighted combination of the perceived gap size and distance from the cone axis. (c) attraction points: attraction points lying in the perception cone are detected. The target growth direction points toward the closest detected attraction point."
+
+\subsubsection PlantArchSoftCollision Soft Collision Avoidance
+
+Calling \ref PlantArchitecture::enableSoftCollisionAvoidance() will enable "soft" collision avoidance for internodes, and optionally for petioles and peduncles. The term "soft" here is used because growth will generally tend in a direction that minimizes collisions, but it will not strictly prevent collisions.
+
+When enabled, each time a new internode (or optionally petiole or peduncle) is spawned during growth, a "perception cone" with axis oriented in the initial candidate growth direction is used to determine potential obstacles. A user-defined number of rays are launched from the cone apex toward its base to calculate points of intersection for objects within the cone. The algorithm then uses this information to determine the largest contiguous gap within the cone's view, and a direction vector originating at the cone's base and pointing to the middle of the gap. An "inertia" factor is set that determines how abruptly growth is adjusted toward the gap -- a factor of 0.0 sets the new growth direction exactly toward the gap, while a factor of 1.0 does not modify the growth direction. By default, only leaves are considered as obstacles for soft collision avoidance, but other organ types can be optionally enabled, which are accompanied by increased computational cost.
+
+~~~~~~{.cpp}
+#include "PlantArchitecture.h"
+using namespace helios;
+
+int main(){
+
+    Context context;
+    PlantArchitecture plantarchitecture(&context);
+
+    // Enable soft collision avoidance with default parameters
+    plantarchitecture.enableSoftCollisionAvoidance();
+
+    // Load and build plant
+    plantarchitecture.loadPlantModelFromLibrary("bean");
+    plantarchitecture.buildPlantInstanceFromLibrary(nullorigin, 0);
+
+    // Configure collision parameters
+    plantarchitecture.setSoftCollisionAvoidanceParameters(
+        80.0f,   // view_half_angle_deg
+        0.1f,    // look_ahead_distance
+        256,     // sample_count
+        0.4f     // inertia_weight
+    );
+
+    // Grow plant with collision avoidance
+    for( int t=0; t<50; t++ ){
+        plantarchitecture.advanceTime(1);
+    }
+
+    return 0;
+}
+~~~~~~
+
+\subsubsection PlantArchHardCollision Hard Boundary Collision Avoidance
+
+To strictly enforce that plants do not grow into solid boundaries, "hard" boundary collision avoidance can be enabled using \ref PlantArchitecture::enableSolidObstacleAvoidance(). Users define which geometry should be considered as solid boundaries, and the parameters defining the perception cone. Similar to soft object avoidance, solid obstacle avoidance involves launching rays from the perception cone apex toward its base to determine solid obstacles contained in the perception cone. If present, the distance to the solid obstacle closest to the cone apex is determined, along with the normal vector of the obstacle. The new target growth direction is a vector perpendicular to the surface of the object. The strength of the change in growth direction to achieve the target growth direction increases as the plant gets closer to the object. When it gets very near the object, the growth direction is set equal to the target growth direction to ensure that the object will not be hit.
+
+~~~~~~{.cpp}
+#include "PlantArchitecture.h"
+using namespace helios;
+
+int main(){
+
+    Context context;
+    PlantArchitecture plantarchitecture(&context);
+
+    // Create ground plane geometry
+    std::vector<uint> ground_UUIDs;
+    ground_UUIDs.push_back( context.addPatch( make_vec3(-5,-5,0), make_vec3(5,-5,0), make_vec3(5,5,0), make_vec3(-5,5,0) ) );
+
+    // Enable solid obstacle avoidance
+    plantarchitecture.enableSolidObstacleAvoidance(ground_UUIDs, 0.5f);
+
+    // Load and build plant
+    plantarchitecture.loadPlantModelFromLibrary("tomato");
+    plantarchitecture.buildPlantInstanceFromLibrary(nullorigin, 0);
+
+    // Grow plant with obstacle avoidance
+    for( int t=0; t<30; t++ ){
+        plantarchitecture.advanceTime(1);
+    }
+
+    return 0;
+}
+~~~~~~
+
+When soft collision avoidance is enabled, depending on the value of the inertia factor, plants may effectively avoid solid boundaries without hard boundary collision avoidance enabled.
+
+When enabling hard boundary collision avoidance, users can optionally enable fruit adjustment based on solid obstacle collisions using the \c enable_fruit_adjustment parameter. This is useful for large fruit growing near solid obstacles (e.g., large fruit resting on the ground). When this is enabled, fruit are rotated away from the boundary such that a bounding box encompassing the fruit no longer intersects the solid boundaries it was intersecting. Then an iterative refinement procedure rotates the fruit back toward the boundary to get it closer without intersecting it again.
+
+\subsubsection PlantArchCollisionConfig Collision Detection Configuration
+
+The collision detection system provides several configuration options to optimize performance and behavior:
+
+**Collision-Relevant Organs**: Use \ref PlantArchitecture::setCollisionRelevantOrgans() to specify which organ types should participate in collision detection. By default, only leaves are considered to minimize computational cost.
+
+~~~~~~{.cpp}
+plantarchitecture.setCollisionRelevantOrgans(
+    false,  // include_internodes
+    true,   // include_leaves
+    false,  // include_petioles
+    false,  // include_flowers
+    false   // include_fruit
+);
+~~~~~~
+
+**Static Obstacles**: For efficiency, mark geometry that doesn't move during simulation as static using \ref PlantArchitecture::setStaticObstacles().
+
+~~~~~~{.cpp}
+std::vector<uint> building_UUIDs = {...}; // building geometry UUIDs
+plantarchitecture.setStaticObstacles(building_UUIDs);
+~~~~~~
+
+**Advanced Access**: For advanced users, direct access to the internal \ref CollisionDetection instance is available via \ref PlantArchitecture::getCollisionDetection().
+
+**Performance Notes**: Collision detection incurs computational expense proportional to scene complexity and perception cone parameters. For compute-intensive plants like trees, consider:
+- Using smaller perception cone parameters
+- Limiting collision-relevant organs to leaves only
+- Marking static geometry appropriately
+- Enabling collision detection only when necessary
+
+\subsubsection PlantArchGroundClipping Ground Collision Detection (Legacy)
+
+The model also has the ability to detect collisions with the ground plane and clip any organs that intersect the ground using \ref PlantArchitecture::enableGroundClipping(). By default, the ground is assumed to be at a height of 0, but this can optionally be set to any height. This is a legacy feature that is superseded by the more flexible solid obstacle avoidance system described above.
+
+\section PlantArchDescription Background Theory
+
+\subsection PlantArchPhytomer The Phytomer: Basic unit of a plant shoot
+
+The phytomer is the basic unit of a shoot, and consists of an internode, one or more petioles, leaves, and inflorescence if present. The internode consists of a tube whose base is connected either to a parent shoot if it is the first phytomer along a shoot, or to the end of another phytomer along the same shoot.
+
+A phytomer can have one or more petioles, which are connected at the end of the internode. Each petiole has one or more leaves.
+
+At the tip of a growing shoot (i.e., end of the last phytomer on the shoot), there is an apical vegetative bud that can spawn a new phytomer along the same shoot. This is how shoot growth occurs. During a dormant period, one or more apical floral buds can also be created.
+
+At the base of the petiole, there may be one or more vegetative buds that can develop into a new shoot, and one or more floral buds that can develop into a fruit. The vegetative and floral buds can break into a new shoot/flower in the same growing season, or may need a winter dormancy period before breaking. It is also possible that a bud never breaks and dies. Once a bud breaks it is considered dead.
+
+\image html phytomer_schematic.jpeg Schematic depiction of a phytomer within a shoot. New growth (i.e., production of new phytomers) can occur at vegetative buds (teal arrows), which may be located at the shoot tip/apex or axillary to a petiole. Flowers/fruit may be produced at floral buds, which are also located either at the shoot tip or axillary to petioles.
+
+\subsection PlantArchCoord Coordinate System
+
+The coordinate system of plant organs is defined with respect to it's parent element (i.e., element it originated from), with it's default orientation being aligned with it's parent's axis. It can then be rotated based on angles of 'pitch', 'yaw', and 'roll' (in that order):
+
+<b>Pitch:</b> rotation angle formed between the axis of the element and it's parent's axis.
+
+<b>Yaw:</b> rotation angle about the parent's axis (except in the case of a leaf, where it is about an axis perpendicular to the leaf midrib).
+
+<b>Roll:</b> rotation angle about the element's own axis
+
+\image html pitchyawroll_schematic_organs.jpeg
+
+\subsection PlantArchRandParam Randomization of Parameters
+
+Nearly all parameters in the architectural model can either be specified as a constant value, or as a random variable following several pre-defined distributions.
+
+Parameters that can be randomized have type of ef RandomParameter_float or ef RandomParameter_int depending on the parameter value type. If the parameters are assigned a constant value, they are set the same as a regular float or int. The ef RandomParameter_float::val() "val()" method is used to get the value of the parameter.
+
+~~~~~~
+// Assign a constant value
+RandomParameter_float param;
+param = 5;
+// Alternative approach
+RandomParameter_float other_param(5);
+~~~~~~
+
+In order to randomize the variable, member methods can be called to set the distribution type and specify the distribution parameters. It is also required to initialize the variable with a random number generator. It is recommended that this be based on the Context's generator to keep everything consistent. Below is an example.
+
+~~~~~~
+Context context;
+
+RandomParameter_float param(context.getRandomGenerator());
+param.uniformDistribution(0,7.5);
+std::cout << "Random value: " << param.val() << std::endl;
+~~~~~~
+
+Available distributions for \ref RandomParameter_float are listed below
+
+| Distribution | Method | Parameters |
+| ------| ------ | ------ |
+| Uniform | \ref RandomParameter_float::uniformDistribution | minimum value, maximum value |
+| Normal | \ref RandomParameter_float::normalDistribution | mean, standard deviation |
+| Weibull | \ref RandomParameter_float::weibullDistribution | shape parameter, scale parameter |
+
+and for \ref RandomParameter_int are:
+
+| Distribution | Method | Parameters |
+| ------| ------ | ------ |
+| Uniform | \ref RandomParameter_int::uniformDistribution | minimum value, maximum value |
+| Discrete Values | \ref RandomParameter_int::discreteValues | vector of discrete int values that will be randomly chosen |
+
+
+\section PlantArchPhytomerParams Defining the Phytomer and its Parameters
+
+Phytomers are defined by a set of parameters that specify its geometry. These parameters are stored in a data structure called \ref PhytomerParameters. The phytomer parameters are parameters that are generally constant across space and time (aside from randomization), and are usually species-specific.
+
+The table below lists the parameters that define the geometry of the phytomer, and their descriptions. There are some parameters that are notably absent, such as the internode length and radius. Since these parameters vary substantially with age and position along the shoot, these are considered to be parameters of the shoot and not the phytomer. Shoot parameters are described below in \ref PlantArchShoot.
+
+| Parameter | Type | Units | Description |
+| ------| ------ | ------ | ------ |
+| --- **internode** --- ||||
+| pitch | RandomParameter_float | degrees | Angle of the phytomer internode with respect to the previous phytomer along the shoot. Setting this >0 creates a zig-zag shoot. |
+| phyllotactic_angle | RandomParameter_float | degrees | Angle between the petioles/buds of two successive phytomers along the shoot. See <a href="https://en.wikipedia.org/wiki/Phyllotaxis">this page</a> for more information on phyllotaxis. |
+| radius_initial | RandomParameter_float | meters | Initial radius of the internode when it is created. |
+| max_vegetative_buds_per_petiole | RandomParameter_int | - | Maximum number of possible vegetative nodes per petiole. Some of these buds may not break depending on the vegetative bud break probability. |
+| max_floral_buds_per_petiole | RandomParameter_int | - | Maximum number of possible floral nodes per petiole. Some of these buds may not break depending on the flower bud break probability. |
+| color | helios::RGBcolor | - | Diffuse color of the internode tube. |
+| image_texture | \htmlonly<span style="font-family: Courier, monospace; color: green;">std::string</span>\endhtmlonly | - | Image texture to map to the internode tube (overrides RGB color). |
+| length_segments | \htmlonly<span style="font-family: Courier, monospace; color: green;">uint</span>\endhtmlonly | - | Number of longitudinal segment subdivisions of the internode tube. |
+| radial_subdivisions | \htmlonly<span style="font-family: Courier, monospace; color: green;">uint</span>\endhtmlonly | - | Number of radial subdivisions segments of the internode tube (e.g., =4 gives a square cross-section; =5 gives a pentagonal cross-section, etc.) |
+| --- **petiole** --- ||||
+| petioles_per_internode | \htmlonly<span style="font-family: Courier, monospace; color: green;">uint</span>\endhtmlonly | - | Number of petioles emanating from a single internode (e.g., for an 'opposite' growth pattern, = 2) |
+| pitch | RandomParameter_float | degrees | Angle of the petiole base axis with respect to its parent phytomer axis. |
+| radius | RandomParameter_float | meters | Radius of petiole cross-section. (radius = 0 does not create any petiole) |
+| length | RandomParameter_float | meters | Length of the petiole tube. (length = 0 does not create any petiole) |
+| curvature | RandomParameter_float | degrees/meter | Curvature angle of the petiole per unit length of petiole. If curvature is positive, petiole curves upward toward vertical. If negative, curvature is downward. |
+| taper | RandomParameter_float | - | Ratio between the petiole radius at the tip to the radius at the base (e.g., =1 has no taper, =0 comes to a point at the tip). |
+| color | helios::RGBcolor | - | Diffuse color of the petiole tube. |
+| length_segments | \htmlonly<span style="font-family: Courier, monospace; color: green;">uint</span>\endhtmlonly | - | Number of longitudinal segment subdivisions of the petiole tube. |
+| radial_subdivisions | \htmlonly<span style="font-family: Courier, monospace; color: green;">uint</span>\endhtmlonly | - | Number of radial subdivisions segments of the petiole tube (e.g., =4 gives a square cross-section; =5 gives a pentagonal cross-section, etc.) |
+| --- **leaf** --- ||||
+| leaves_per_petiole | \htmlonly<span style="font-family: Courier, monospace; color: green;">uint</span>\endhtmlonly | - | Number of leaves on each petiole. >1 creates a compound leaf. |
+| pitch | RandomParameter_float | degrees | Angle of the leaf axis with respect to its parent petiole axis. |
+| yaw | RandomParameter_float | degrees | Rotation angle of the leaf about its base along the plane of its lamina. |
+| roll | RandomParameter_float | degrees | Rotation angle of the leaf about it's own axis (midrib). |
+| leaflet_offset | RandomParameter_float | - | If a compound leaf (leaves_per_petiole>1), this sets the spacing between adjacent leaflets along the petiole as a fraction of the petiole length. Note that the first two leaves from the tip will be offset from the tip by half this value. |
+| leaflet_scale | RandomParameter_float | - | If a compound leaf (leaves_per_petiole>1), this sets the scaling factor of the leaflet moving down the petiole with respect to the previous leaf (<1 scales down, >1 scales up). |
+| prototype_scale | RandomParameter_float | - | Scaling factor applied to the leaf prototype. Usually the prototype has unit length, so this sets the physical length of the leaf. |
+| prototype | LeafPrototype struct | - | Structure containing information to build leaf prototypes. |
+| --- **peduncle** --- ||||
+| length | RandomParameter_float | meters | Length of the peduncle (inflorescence supporting structure). |
+| radius | RandomParameter_float | meters | Radius of the peduncle. |
+| pitch | RandomParameter_float | degrees | Angle of the peduncle axis with respect to its parent internode axis. |
+| roll | RandomParameter_float | degrees | Rotation angle of the peduncle about it's own axis. |
+| curvature | RandomParameter_float | degrees/meter | Curvature angle of the peduncle per unit length of peduncle. If curvature is positive, peduncle curves upward toward vertical. If negative, curvature is downward. |
+| color | helios::RGBcolor | - | Diffuse color of the peduncle tube. |
+| length_segments | \htmlonly<span style="font-family: Courier, monospace; color: green;">uint</span>\endhtmlonly | - | Number of longitudinal segment subdivisions of the inflorescence supporting structure. |
+| radial_subdivisions | \htmlonly<span style="font-family: Courier, monospace; color: green;">uint</span>\endhtmlonly | - | Number of radial subdivisions segments of the inflorescence supporting structure (e.g., =4 gives a square cross-section; =5 gives a pentagonal cross-section, etc.) |
+| --- **inflorescence** --- ||||
+| flowers_per_peduncle | RandomParameter_int | - | Number of flowers per peduncle (rachis). |
+| flower_offset | RandomParameter_float | - | If peduncle has multiple flowers/fruit (flowers_per_peduncle>1), this sets the spacing between adjacent flowers/fruit along the peduncle as a fraction of the peduncle length. |
+| pitch | RandomParameter_float | degrees | Angle of the fruit axis with respect to its parent peduncle axis. |
+| roll | RandomParameter_float | degrees | Rotation angle of the fruit about it's own axis (x-axis of fruit prototype). |
+| flower_prototype_scale | RandomParameter_float | - | Scaling factor applied to the flower prototype. Usually the prototype has unit length, so this sets the physical length of the flower. |
+| flower_prototype_function | function pointer | - | Pointer to a function that generates the flower prototype model. Function takes arguments ( helios::Context*, uint subdivisions, bool flower_is_open ) and returns an object ID (uint). |
+| fruit_prototype_scale | RandomParameter_float | - | Scaling factor applied to the fruit prototype. Usually the prototype has unit length, so this sets the physical length of the fruit. |
+| fruit_prototype_function | function pointer | - | Pointer to a function that generates the fruit prototype model. Function takes arguments ( helios::Context*, uint subdivisions, float time_since_fruit_set ) and returns an object ID (uint). |
+| unique_prototypes | \htmlonly<span style="font-family: Courier, monospace; color: green;">uint</span>\endhtmlonly | - | Number of unique flower/fruit prototypes to generate per shoot type. If = 0, every leaf will be unique. Increasing this value gives more variability across the plant, but it will take longer to initially generate the plant model. |
+
+<!--
+
+ The rotation of each organ (internode, petiole, leaf, peduncle, inflorescence) is defined relative to the axis of its parent following the pitch, yaw, roll convention described above.
+
+ \image html phytomer_angle_schematic.jpeg Schematic depiction of the angles defining the orientation of the phytomer internode, petiole, and leaf.
+
+-->
+
+The phytomer parameters are stored in a data structure (struct) called \ref PhytomerParameters. This structure has sub-member structs for each of internode, leaf, petiole, and inflorescence, each containing the parameters for that element type as designated in the table above. Below is an example of how to set a few of the parameters:
+
+~~~~~~
+PhytomerParameters phytomer;
+phytomer.internode.pitch = 20;
+phytomer.petiole.radius = 0.001;
+phytomer.petiole.length = 0.05;
+phytomer.leaf.pitch = 10;
+phytomer.leaf.prototype_scale = 0.1;
+phytomer.peduncle.length = 0.1;
+~~~~~~
+
+The figure below provides some examples of how various shoot growth patterns (e.g., alternate, opposite) can be created by varying the model parameters.
+
+\image html growth_pattern_schematic.jpeg
+
+\subsection PlantArchOrgans Creating Plant Organ Prototypes
+
+The geometry of plant leaves, flowers, and fruit are defined based on `prototype' models that can be specified in a number of ways. Each time one of these organ types is to be generated in the model, a user-defined function is called to add the geometry. The user can write a function to add a \ref helios::Tile object, a mesh of triangles, load a polygon model from file, or any other desired method.
+
+The size, position, and orientation of the prototype when it is created needs to follow a specific convention.
+
+- Prototype size: The prototype should have a unit length, and the size of the organ is set by scaling the prototype in the prototype function. This is done to allow for consistent scaling of the organ based on the parameters of the phytomer and petiole.
+- Prototype origin: The base of the organ should be located at the origin (0,0,0). For a leaf, the base is the point at which the leaf meets the petiole. For a flow or fruit, this is the point at which the organ meets its supporting structure (peduncle).
+- Prototype orientation: The organ should be oriented such that its centerline axis is along the positive x-axis, with the positive z-axis pointing upward from the base of the organ.
+
+Flower and fruit OBJ models are usually created in 3rd party software and exported as OBJ files. The Blender project files used to create all the flower and fruit organ models are provided in the directory 'plugins/plantarchitecture/assets/Blender_organ_models'.
+
+\image html prototype_coordinate_schematic.png
+
+\subsubsection LeafPrototypes Leaf Prototypes
+
+Leaf prototypes can be generated using three primary methods: 1) using the built-in function for procedural leaf generation based on a set of parameters, 2) loading a leaf model from an OBJ file, or 3) creating a leaf manually through Helios Context methods (e.g., \ref helios::Context::addTileObject( const helios::vec3&, const helios::vec2&, const helios::SphericalCoord&, const helios::int2& ) ).
+
+The built-in function for procedural leaf generation generates leaf geometries based on the parameter set given in the table below. The advantage of this approach is that it provides a straight-forward means of representing many leaf morphologies with random variation. The drawback is that if very high leaf detail is needed such as venation patterns, this may require using an OBJ model.
+
+| Parameter | Type | Default | Description |
+| ------| ------ | ------ | ------ |
+| --- **parameters for procedural parametric leaf generation** --- ||||
+| leaf_texture_file | \htmlonly<span style="font-family: Courier, monospace; color: green;">std::string</span>\endhtmlonly | Must be specified | Path to the leaf texture image file. |
+| leaf_aspect_ratio | \htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly | 1.0 | Ratio of leaf width to leaf length. |
+| midrib_fold_fraction | \htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly | 0.0 | Fraction of folding along midrib (=0 leaf is flat, =1 leaf is completely folded in half). |
+| longitudinal_curvature | \htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly | 0.0 | Curvature factor along x-direction (lengthwise). (+curves upward, -curved downward) |
+| lateral_curvature | \htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly | 0.0 | Curvature factor along y-direction (widthwise). (+curves upward, -curved downward) |
+| wave_period | \htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly | 0.0 | Period factor of leaf waves/wrinkles. |
+| wave_amplitude | \htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly | 0.0 | Amplitude of leaf waves/wrinkles. |
+| leaf_buckle_length | \htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly | 0.0 | Length along the leaf where it buckles due to its weight (as fraction of overall leaf length). |
+| leaf_buckle_angle | \htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly | 0.0 | Angle (degrees) formed by the leaf buckling. |
+| unique_prototypes | \htmlonly<span style="font-family: Courier, monospace; color: green;">uint</span>\endhtmlonly | 0 | Number of unique leaf prototypes to generate. If = 0, every leaf will be unique. Increasing this value gives more variability across the plant, but it will take longer to initially generate the plant model. |
+| leaf_offset | \htmlonly<span style="font-family: Courier, monospace; color: green;">helios::vec3</span>\endhtmlonly | (0,0,0) | Offset/translation applied to the leaf prototype. |
+| petiole_roll | \htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly | 0.0 | Creates a roll of the leaf near its base to more smoothly meet the petiole. |
+| build_petiolule | \htmlonly<span style="font-family: Courier, monospace; color: green;">bool</span>\endhtmlonly | false | Flag to build a petiolule (small petiole at leaflet base) connecting the leaf to the petiole. |
+| --- **building leaf from OBJ model** --- ||||
+| OBJ_model_file | \htmlonly<span style="font-family: Courier, monospace; color: green;">std::string</span>\endhtmlonly | empty | Path to the OBJ file containing the leaf model. |
+| --- **building leaf from custom prototype function** --- ||||
+| prototype_function | function pointer | null | Pointer to a function that generates the leaf prototype model. Function takes arguments ( helios::Context*, LeafPrototype*, int compound_leaf_index ) and returns an object ID (uint). |
+
+If the value of \htmlonly<span style="font-family: Courier, monospace; color: blue;">OBJ_model_file</span>\endhtmlonly is not empty, the leaf prototype function will load the leaf model from the specified OBJ file and ignore all other parameters. If the value of \htmlonly<span style="font-family: Courier, monospace; color: blue;">prototype_function</span>\endhtmlonly is not null, the leaf prototype function will call the user-defined function to generate the leaf model. Otherwise, the model will use the default procedural leaf generation method based on the parameters given (note that the leaf texture file must be specified).
+
+\subsubsection FlowerPrototypes Flower Prototypes
+
+Flower geometry is generated within the model by calling a user-defined function that generates the flower prototype. The function must return an object ID (\htmlonly<span style="font-family: Courier, monospace; color: green;">uint</span>\endhtmlonly) corresponding to the compound object created in the function. Arguments to the prototype function are as follows:
+
+~~~~~~
+uint(*prototype_function)( helios::Context*, uint subdivisions, bool flower_is_open )
+~~~~~~
+
+Usually, the prototype function simply load an OBJ model from file.
+
+The arguments do not necessarily need to be used inside the prototype function, but are always passed to the function in case they are needed. The \htmlonly<span style="font-family: Courier, monospace; color: green;">subdivisions</span>\endhtmlonly argument can be used to specify the level of detail of the flower model. The \htmlonly<span style="font-family: Courier, monospace; color: blue;">flower_is_open argument</span>\endhtmlonly is a boolean that allows for generation of open and closed flower models.
+
+\subsubsection FruitPrototypes Fruit Prototypes
+
+Fruit geometry creation is similar to that of flowers, except the prototype function has one less argument.
+
+~~~~~~
+uint(*prototype_function)( helios::Context*, uint subdivisions )
+~~~~~~
+
+\subsection PlantArch_compound Compound Leaves
+
+Compound leaves consist of a single petiole with multiple leaves (leaflets) attached. The number of leaflets is specified by the parameter \htmlonly<span style="font-family: Courier, monospace; color: blue;">leaves_per_petiole</span>\endhtmlonly in the \ref PhytomerParameters structure (if \htmlonly<span style="font-family: Courier, monospace; color: blue;">leaves_per_petiole</span>\endhtmlonly = 1, it is not a compound leaf). The compound leaf is formed by making a copy of the leaf prototype, and scaling, rotating, and translating it based on the position along the petiole. If there is an even number of leaflets, there will be two leaves attached to the tip of the leaf at an angle of 60 degrees from each other, whereas if the number of leaflets is even there will be a single leaf attached to the tip. The size of these tip leaves is set by the parameter \htmlonly<span style="font-family: Courier, monospace; color: blue;">leaf_prototype_scale</span>\endhtmlonly. If the number of leaflets is greater than 2, additional leaflets are added running down the petiole in an opposite pattern. The spacing between adjacent leaflets is specified as a fraction of the petiole length by the parameter \htmlonly<span style="font-family: Courier, monospace; color: blue;">leaflet_offset</span>\endhtmlonly, and the scaling factor of the leaflet moving down the petiole with respect to the previous leaflet is specified by the parameter \htmlonly<span style="font-family: Courier, monospace; color: blue;">leaflet_offset</span>\endhtmlonly. The leaflets along the petiole can either get bigger or smaller than the tip leaf/(leaves) according to the parameter \htmlonly<span style="font-family: Courier, monospace; color: blue;">leaflet_scale</span>\endhtmlonly (<1 gets smaller, >1 gets bigger).
+
+\image html compound_leaf_schematic.jpeg "Schematic illustration of varying compound leaves and their parameters. (a) A compound leaf with 7 leaflets. (b) A compound leaf with an even number of leaflets (6). (c) A compound leaf with a leaflet offset of 0."
+
+Alternatively, a compound leaf could be created by adding a single "leaf prototype" that contains all of the leaflets in a single model/mesh and specifying 1 leaf per petiole. However, the drawback of this is that it would not be possible to add random variation to the appearance of the compound leaf (e.g., leaf pitch angle, leaf yaw angle, etc.).
+
+\subsection PlantArch_flowers Inflorescence
+
+The term 'inflorescence' used to denote the peduncle and flowers together. The peduncle is the supporting structure that connects the internode to the flowers. In this model, we do not distinguish between the peduncle (part between the internode and first flower) and the rachis (part that connects adjacent flowers when there are multiple flowers per inflorescence) - this is all considered the peduncle for simplicity.
+
+If \htmlonly<span style="font-family: Courier, monospace; color: blue;">flowers_per_peduncle</span>\endhtmlonly is greater than 1, the flowers are arranged along the peduncle in a pattern specified by the parameter \htmlonly<span style="font-family: Courier, monospace; color: blue;">flower_arrangement_pattern</span>\endhtmlonly (the two options are "alternate" and "opposite"). The \htmlonly<span style="font-family: Courier, monospace; color: blue;">flower_offset</span>\endhtmlonly parameter specifies the spacing between adjacent flowers along the peduncle.
+
+The sketch below shows an example of one parameter set for the infloresence.
+
+\image html flower_schematic.jpeg
+
+\section PlantArchShoot Defining Shoots and their Parameters
+
+A shoot is the fundamental topological unit of organization in the plant architectural model, and consists of a series of connected phytomers. Each phytomer contains one or more vegetative buds at the point where the petioles meet the internode, which have the possibility to spawn child shoots.
+
+Parameters defining the geometry and growth of the shoot are given in the \ref ShootParameters structure. Each parameter in the \ref ShootParameters structure is summarized in the table below, and described in more detail in the following sections.
+
+| Parameter | Type | Default | Units | Description |
+| ------| ------ | ------ | ------ | ------ |
+| --- **%Phytomer Parameters** --- |||||
+| phytomer_parameters | PhytomerParameters | - | - | Parameters defining the geometry of the phytomers comprising this shoot. |
+| --- **Geometric Parameters** --- |||||
+| max_nodes | RandomParameter_int | 10 | - | Maximum number of nodes/phytomers along a shoot. |
+| max_nodes_per_season | RandomParameter_int | 10 | - | Maximum number of nodes/phytomers that a shoot can produce in a single season (\f$\leq\f$ max_nodes). |
+| insertion_angle_tip | RandomParameter_float | 20 | degrees | Angle of the child shoot with respect to the parent shoot at the tip of the parent shoot. |
+| insertion_angle_decay_rate | RandomParameter_float | 0 | degrees/node | Rate of increase of the child insertion angle moving down the parent shoot. |
+| internode_length_max | RandomParameter_float | 0.02 | meters | Maximum length (with respect to position along the parent shoot) of the internode of a child shoot. |
+| internode_length_min | RandomParameter_float | 0.002 | meters | Minimum length (with respect to position along the parent shoot) of the internode of a child shoot. |
+| internode_length_decay_rate | RandomParameter_float | 0 | meters/node | Rate of decrease of the internode length moving down the parent shoot. |
+| base_roll | RandomParameter_float | 0 | degrees | Roll angle of the shoot, which effectively specifies the angle of the first petiole relative to the parent shoot. |
+| base_yaw | RandomParameter_float | 0 | degrees | Yaw angle of the shoot relative to the parent shoot. |
+| gravitropic_curvature | RandomParameter_float | 0 | degrees/meter | Curvature angle of the shoot per unit length of shoot. If curvature is positive, shoot curves upward toward vertical. If negative, curvature is downward. |
+| tortuosity | RandomParameter_float | 0 | degrees/(meters)^0.5 | Factor determining the amount of random "wiggle" in internode growth along the shoot. |
+| --- **Growth Parameters** --- |||||
+| phyllochron_min | RandomParameter_float | 1.0 | days/leaf | Minimum time between the emergence of successive phytomers along the shoot (minimum time or maximum growth rate). The actual phyllochron can be increased dynamically if the carbohydrate model is enabled. |
+| elongation_rate_max | RandomParameter_float | 0.2 | meter/meter/day | Maximum relative rate of elongation of the internode of the shoot. Units are meters of elongation per meter of maximum internode length per day. The actual elongation rate can be reduced dynamically if the carbohydrate model is enabled. |
+| girth_area_factor | RandomParameter_float | 0 | cm^2 branch area / m^2 downstream leaf area | Cross-sectional area of internode (girth), determined by the amount of downstream leaf area. The girth will only increase and does not decrease if leaves are lost. Set this factor to 0 to prevent girth scaling. |
+| vegetative_bud_break_time | RandomParameter_float | 5 | days | Amount of time after the bud is created or after dormancy is broken for the vegetative bud to break. |
+| vegetative_bud_break_probability_decay_rate | RandomParameter_float | 0 | 1/nodes | Rate at which the probability a bud produces a shoot changes along the shoot. If >0, probability is 1 at the shoot base and decreases to a value of \htmlonly<span style="font-family: Courier, monospace; color: blue;">vegetative_bud_break_probability_min</span>\endhtmlonly. If <0, the probability is 1 at the shoot tip and decreases backward. |
+| vegetative_bud_break_probability_min | RandomParameter_float | 0 | - | Probability of a bud breaking dormancy and emerging as a shoot. |
+| flower_bud_break_probability | RandomParameter_float | 0 | - | Probability of a flower bud emerging as a flower. |
+| fruit_set_probability | RandomParameter_float | 0 | - | Probability of a flower becoming a fruit. |
+| growth_requires_dormancy | \htmlonly<span style="font-family: Courier, monospace; color: green;">bool</span>\endhtmlonly | \htmlonly<span style="font-family: Courier, monospace; color: orange;">false</span>\endhtmlonly | - | Flag indicating whether or not the vegetative buds require a winter dormancy period to break into a shoot. If true, the shoot will emerge in the same growing season as the parent shoot. If false, the shoot will emerge from a bud that requires a winter dormancy period. |
+| flowers_require_dormancy | \htmlonly<span style="font-family: Courier, monospace; color: green;">bool</span>\endhtmlonly | \htmlonly<span style="font-family: Courier, monospace; color: orange;">false</span>\endhtmlonly | - | Flag indicating whether or not the flower buds require a winter dormancy period to emerge. If true, the flowers will emerge in the same growing season as the parent shoot. If false, the flowers will emerge from a bud that requires a winter dormancy period. |
+| determinate_shoot_growth | \htmlonly<span style="font-family: Courier, monospace; color: green;">bool</span>\endhtmlonly | \htmlonly<span style="font-family: Courier, monospace; color: orange;">true</span>\endhtmlonly | - | Flag indicating whether or not shoot growth is determinate. If true, shoot growth will stop once flowering occurs, and the apical bud will become dormant. If false, the shoot will continue growing after flowering.  |
+
+\subsection ShootParametersGeom Geometric Parameters of the Shoot
+
+\subsubsection ShootParam_max_nodes max_nodes and max_nodes_per_season
+
+\htmlonly<span style="font-family: Courier, monospace; color: blue;">max_nodes</span>\endhtmlonly is the maximum number of phytomers that a single shoot can grow to have. Leaves will continue to emerge from the terminal bud according to the phyllochron until \htmlonly<span style="font-family: Courier, monospace; color: blue;">max_nodes</span>\endhtmlonly is reached.
+
+\htmlonly<span style="font-family: Courier, monospace; color: blue;">max_nodes_per_season</span>\endhtmlonly is the maximum number of phytomers that a shoot can produce in a single growing season, and should be less than or equal to \htmlonly<span style="font-family: Courier, monospace; color: blue;">max_nodes</span>\endhtmlonly. This parameter is used to limit the number of phytomers that a shoot can produce in a single growing season such that it eventually stops growing for the season, but can still put on additional phytomers in following seasons.
+
+\subsubsection ShootParam_base_roll base_roll
+
+\htmlonly<span style="font-family: Courier, monospace; color: blue;">base_roll</span>\endhtmlonly is the roll angle of the first phytomer of the shoot about the shoot axis relative to vertical. If \htmlonly<span style="font-family: Courier, monospace; color: blue;">base_roll</span>\endhtmlonly = 0, the first petiole along the shoot will be vertical (or as vertical as is possible given the shoot direction and the specified angle of the petiole relative to the internode). This parameter is used to set the initial orientation of the shoot. For example, if \htmlonly<span style="font-family: Courier, monospace; color: blue;">base_roll</span>\endhtmlonly = 0, the first phytomer of the shoot will be oriented vertically. If \htmlonly<span style="font-family: Courier, monospace; color: blue;">base_roll</span>\endhtmlonly = 30, the first phytomer of the shoot will be oriented 30 degrees from vertical.
+
+\subsubsection ShootParam_insertion insertion_angle_tip and insertion_angle_decay_rate
+
+The insertion angle of child shoots is the angle that a child shoot makes with its parent shoot growth axis.
+
+The methodology for determining the insertion angle of a child shoot differs depending on whether the shoot emerges from a bud that requires a winter dormancy period (proleptic shoot), or whether the shoot emerges in the same growing season. This behavior is set based on the parameter \ref ShootParameters::growth_requires_dormancy (more information on this parameter below).
+
+<b>For buds NOT requiring dormancy</b> (\ref ShootParameters::growth_requires_dormancy = false), the insertion angle of the child shoot is simply given by the parameter \htmlonly<span style="font-family: Courier, monospace; color: blue;">insertion_angle_tip</span>\endhtmlonly (degrees). (In this case, the parameter \htmlonly<span style="font-family: Courier, monospace; color: blue;">insertion_angle_decay_rate</span>\endhtmlonly is not used.)
+
+<b>For buds requiring dormancy</b> (proleptic; \ref ShootParameters::growth_requires_dormancy = true), the insertion angle of the child shoot is the smallest at the tip of the shoot (at the time dormancy is broken) and increases moving down the shoot toward and angle of 90 degrees.
+
+As shown in the figure below, the insertion angle at the shoot tip is given by the parameter \htmlonly<span style="font-family: Courier, monospace; color: blue;">insertion_angle_tip</span>\endhtmlonly (degrees). The angle increases linearly at a rate of \htmlonly<span style="font-family: Courier, monospace; color: blue;">insertion_angle_decay_rate</span>\endhtmlonly (units of degrees per node) until it reaches a maximum insertion angle of 90 degrees. For example, if \htmlonly<span style="font-family: Courier, monospace; color: blue;">insertion_angle_tip</span>\endhtmlonly = 20 degrees and \htmlonly<span style="font-family: Courier, monospace; color: blue;">insertion_angle_decay_rate</span>\endhtmlonly = 20 degrees/node, the insertion angle at the second node from the tip would be 40 degrees, 60 degrees at the third node, 80 degrees at the fourth node, and 90 degrees at all subsequent nodes, up until reaching the previous year's growth.
+
+\image html insertion_angle_schematic.jpeg
+
+\subsubsection ShootParam_length internode_length_max, internode_length_min, and internode_length_decay_rate
+
+The "potential" or fully elongated internode length is specified for a shoot, and is constant along the length of the shoot. When a phytomer emerges from a bud (either apical or lateral along a parent shoot) it's internode is scaled to some short initial size, and elongates over time according to the \htmlonly<span style="font-family: Courier, monospace; color: blue;">elongation rate</span>\endhtmlonly parameter (see below).
+
+Similar to determination of the child insertion angle, the methodology for determination of the fully elongated internode length of a child shoot depends on whether or not the child shoot is emerging from a dormant bud.
+
+<b>For buds NOT requiring dormancy</b> (\ref ShootParameters::growth_requires_dormancy = false), the potential length of internodes along a shoot is determined according to the value of the \htmlonly<span style="font-family: Courier, monospace; color: blue;">internode_length_max</span>\endhtmlonly parameter.
+
+<b>For buds requiring dormancy</b> (proleptic; \ref ShootParameters::growth_requires_dormancy = true), the potential length of a shoot's internodes is maximum at the tip of the shoot (at the time dormancy is broken) and decreases moving down the shoot. The potential length of the internode at the tip of the shoot is given by the parameter \htmlonly<span style="font-family: Courier, monospace; color: blue;">internode_length_max</span>\endhtmlonly. The length decreases linearly at a rate of \htmlonly<span style="font-family: Courier, monospace; color: blue;">internode_length_decay_rate</span>\endhtmlonly (units of meters per node) until it reaches a minimum length given by the parameter \htmlonly<span style="font-family: Courier, monospace; color: blue;">internode_length_min</span>\endhtmlonly. For example, if \htmlonly<span style="font-family: Courier, monospace; color: blue;">internode_length_max</span>\endhtmlonly = 0.1 m, \htmlonly<span style="font-family: Courier, monospace; color: blue;">internode_length_min</span>\endhtmlonly = 0.01 m, and \htmlonly<span style="font-family: Courier, monospace; color: blue;">internode_length_decay_rate</span>\endhtmlonly = 0.03 m/node, the potential length of the internode at the second node from the tip would be 0.07 m, 0.04 m at the third node, 0.01 m at the fourth node, and 0.01 m at all subsequent nodes, up until reaching the previous year's growth.
+
+ \image html internode_length_schematic.jpeg
+
+\subsubsection ShootParam_vegetative_prob vegetative_bud_break_probability_min and vegetative_bud_break_probability_decay_rate
+
+The probability that a vegetative bud will break and produce a new shoot can vary along the shoot and is controlled by the parameters \htmlonly<span style="font-family: Courier, monospace; color: blue;">vegetative_bud_break_probability_min</span>\endhtmlonly and \htmlonly<span style="font-family: Courier, monospace; color: blue;">vegetative_bud_break_probability_decay_rate</span>\endhtmlonly. If \htmlonly<span style="font-family: Courier, monospace; color: blue;">vegetative_bud_break_probability_decay_rate</span>\endhtmlonly<0, the probability that the first bud on the shoot will break is 100%, and the probability decreases by \htmlonly<span style="font-family: Courier, monospace; color: blue;">vegetative_bud_break_probability_decay_rate</span>\endhtmlonly at each node until it reaches a value of \htmlonly<span style="font-family: Courier, monospace; color: blue;">vegetative_bud_break_probability_min</span>\endhtmlonly. If \htmlonly<span style="font-family: Courier, monospace; color: blue;">vegetative_bud_break_probability_decay_rate</span>\endhtmlonly>0 (and \htmlonly<span style="font-family: Courier, monospace; color: blue;">growth_requires_dormancy</span>\endhtmlonly is true), the probability that the last (apical) bud on the shoot at the time dormancy is broken will break is 100% and the probability decreases moving down the shoot.
+
+Special Cases: If \htmlonly<span style="font-family: Courier, monospace; color: blue;">vegetative_bud_break_probability_decay_rate</span>\endhtmlonly=0, the probability of bud break is always 100% along the shoot. If \htmlonly<span style="font-family: Courier, monospace; color: blue;">vegetative_bud_break_probability_decay_rate</span>\endhtmlonly>0 and \htmlonly<span style="font-family: Courier, monospace; color: blue;">growth_requires_dormancy</span>\endhtmlonly is false, the probability of bud break is always equal to \htmlonly<span style="font-family: Courier, monospace; color: blue;">vegetative_bud_break_probability_min</span>\endhtmlonly.
+
+\image html vegetative_bud_break_schematic.jpeg width=900px
+
+\subsubsection ShootParam_gravitropic gravitropic_curvature
+
+The tendency of shoots to grow toward vertical is given by the parameter \htmlonly<span style="font-family: Courier, monospace; color: blue;">gravitropic_curvature</span>\endhtmlonly. This parameter is the curvature angle of the shoot per unit length of shoot. If curvature is positive, the shoot curves upward toward vertical. If negative, the shoot curves downward. Once the shoot has reached vertical, it will continue to grow vertically. For example, a shoot that emerges from the bud growing horizontally with \htmlonly<span style="font-family: Courier, monospace; color: blue;">gravitropic_curvature</span>\endhtmlonly = 90 degrees/meter will curve upward such that it will be growing upward after the first meter of growth.
+\subsubsection ShootParam_tortuosity tortuosity
+
+Random "wiggle" can be added to shoot growth using the \htmlonly<span style="font-family: Courier, monospace; color: blue;">tortuosity</span>\endhtmlonly parameter. Each time a phytomer is added to the shoot, some constant amount of differential curvature is added according to the parameter \htmlonly<span style="font-family: Courier, monospace; color: blue;">gravitropic_curvature</span>\endhtmlonly. To introduce random variation, an additional amount of noise is added to the curvature based on a <a href="https://en.wikipedia.org/wiki/Langevin_equation">Langevin</a>-like equation (Brownian motion):
+
+\f[
+    d\theta = -\frac{1}{2}\left(\theta\right)dL + T\xi(dL)
+\f]
+
+where \f$d\theta\f$ is the change in curvature angle of the current phytomer internode relative to the previous internode, \f$\theta\f$ is the integrated curvature angle relative to the base of the shoot, \f$dL\f$ is the internode length, \f$T\f$ is the tortuosity, and \f$\xi (dL)\f$ is a Gaussian process with variance of \f$dL\f$.
+
+\subsection ShootParametersGrowth Growth Parameters of the Shoot
+
+\subsubsection ShootParam_phyllochron phyllochron_min
+
+The \htmlonly<span style="font-family: Courier, monospace; color: blue;">phyllochron_min</span>\endhtmlonly parameter is the time between the emergence of successive phytomers from the shoot terminal bud. Note that if the number of nodes/phytomers along the shoot reaches \htmlonly<span style="font-family: Courier, monospace; color: blue;">gravitropic_curvature</span>\endhtmlonly, the terminal bud will die and cease producing new phytomers.
+
+Note that this is called the "minimum" phyllochron because the phyllochron can be increased based on carbohydrate availability if the carbohydrate model is enabled. Thus, this is value corresponds to the maximum rate of growth.
+
+\subsubsection ShootParam_elongation_rate elongation_rate
+
+The \htmlonly<span style="font-family: Courier, monospace; color: blue;">elongation_rate</span>\endhtmlonly parameter is the rate of axial elongation of the internode of the shoot. When the phytomer is created the internode is small, and will elongate over time according to \htmlonly<span style="font-family: Courier, monospace; color: blue;">elongation_rate</span>\endhtmlonly until it reaches its potential or maximum internode length as determined by the methodology described above. The elongation rate has units of length added to the internode per day.
+
+\subsubsection ShootParam_girth_area_factor girth_area_factor
+
+When the shoot is created, the internode radius is set to the value of the phytomer parameter \htmlonly<span style="font-family: Courier, monospace; color: blue;">internode.radius_initial</span>\endhtmlonly. The girth of the internode will increase over time based on the amount of leaf area downstream of the internode. The girth of the internode is determined by the parameter \htmlonly<span style="font-family: Courier, monospace; color: blue;">girth_area_factor</span>\endhtmlonly, which is the cross-sectional area of the internode (girth) in cm^2 per m^2 of downstream leaf area. The girth will only increase and does not decrease if leaves are lost. Set this factor to 0 to prevent girth scaling.
+
+\subsubsection PlantArchBuild_custom Modifying Parameters of a Plant from the Library
+
+Building a plant from the library with modified parameters is similar to above, except that the parameters are modified before calling the \ref PlantArchitecture::buildPlantInstanceFromLibrary() method. After calling \ref PlantArchitecture::loadPlantModelFromLibrary(), the parameters can be queried (at the shoot level), modified, and then set.
+
+Parameters are queried based on shoot type (the names of which are given in the table above). The user can either query the \ref ShootParameters structure for a single shoot type based on its label, or for all shoot types in the particular model.
+
+The default parameters for each shoot type and species from the library are not listed exhaustively in this documentation, but can be found in the file \ref PlantLibrary.cpp.
+
+Below is an example of modifying the parameters of a single shoot type:
+
+~~~~~~
+plantarchitecture.loadPlantModelFromLibrary( "almond" );
+
+ShootParameters shoot_parameters = plantarchitecture.getCurrentShootParameters( "trunk" );
+shoot_parameters.internode_radius_initial = 0.2;
+shoot_parameters.phytomer_parameters.internode.pitch = 10;
+
+plantarchitecture.updateCurrentShootParameters( "trunk", shoot_parameters );
+plantarchitecture.buildPlantInstanceFromLibrary( nullorigin, 0 );
+~~~~~~
+
+Below is an example of modifying the parameters for all shoot types:
+
+~~~~~~
+plantarchitecture.loadPlantModelFromLibrary( "almond" );
+
+std::map<std::string,ShootParameters> shoot_parameters = plantarchitecture.getCurrentShootParameters( "trunk" );
+for( auto params : shoot_parameters ){
+    std::string shoot_type = params.first;
+    ShootParameters P = params.second;
+    P.internode_radius_initial = 0.2;
+    P.phytomer_parameters.internode.pitch = 10;
+    plantarchitecture.updateCurrentShootParameters( shoot_type, P );
+}
+plantarchitecture.buildPlantInstanceFromLibrary( nullorigin, 0 );
+~~~~~~
+
+\subsection PlantArchShootTypeDiscovery Discovering Available Shoot Types
+
+Each plant model in the library defines one or more shoot types (e.g., "trunk", "branch", "unifoliate", "trifoliate"). You can query which shoot types are available using \ref PlantArchitecture::listShootTypeLabels() to help identify the correct labels for customizing parameters.
+
+\subsubsection PlantArchShootTypeDiscovery_CurrentModel Query Shoot Types for Currently Loaded Model
+
+If you have already loaded a plant model, you can list its shoot types:
+
+~~~~~~
+PlantArchitecture plantarchitecture(&context);
+
+plantarchitecture.loadPlantModelFromLibrary("bean");
+
+std::vector<std::string> shoot_types = plantarchitecture.listShootTypeLabels();
+// shoot_types = {"unifoliate", "trifoliate"}
+
+for( const auto& type : shoot_types ){
+    std::cout << "Bean has shoot type: " << type << std::endl;
+}
+~~~~~~
+
+\subsubsection PlantArchShootTypeDiscovery_AnyModel Query Shoot Types for Any Model Without Loading
+
+You can also query shoot types for any plant in the library without changing your current plant model:
+
+~~~~~~
+PlantArchitecture plantarchitecture(&context);
+
+// Query shoot types for multiple models without loading them
+std::vector<std::string> bean_shoots = plantarchitecture.listShootTypeLabels("bean");
+std::vector<std::string> tomato_shoots = plantarchitecture.listShootTypeLabels("tomato");
+std::vector<std::string> almond_shoots = plantarchitecture.listShootTypeLabels("almond");
+
+// Combine with getAvailablePlantModels() to explore entire library
+std::vector<std::string> all_plants = plantarchitecture.getAvailablePlantModels();
+for( const auto& plant : all_plants ){
+    std::vector<std::string> shoot_types = plantarchitecture.listShootTypeLabels(plant);
+    std::cout << plant << " has " << shoot_types.size() << " shoot types" << std::endl;
+}
+~~~~~~
+
+\subsubsection PlantArchShootTypeDiscovery_Instance Query Shoot Types for Plant Instances
+
+For plant instances that have been built, you can query their shoot types using the plant ID:
+
+~~~~~~
+PlantArchitecture plantarchitecture(&context);
+
+// Build bean and tomato plants
+plantarchitecture.loadPlantModelFromLibrary("bean");
+uint bean_plantID = plantarchitecture.buildPlantInstanceFromLibrary( nullorigin, 0 );
+
+plantarchitecture.loadPlantModelFromLibrary("tomato");
+uint tomato_plantID = plantarchitecture.buildPlantInstanceFromLibrary( make_vec3(1,0,0), 0 );
+
+// Query shoot types for each instance
+std::vector<std::string> bean_types = plantarchitecture.listShootTypeLabels(bean_plantID);
+std::vector<std::string> tomato_types = plantarchitecture.listShootTypeLabels(tomato_plantID);
+~~~~~~
+
+This functionality is useful for:
+- Exploratory analysis of plant models
+- Validating shoot type names before calling \ref PlantArchitecture::getCurrentShootParameters()
+- Building user interfaces that display available options
+- Runtime inspection of plant instances to understand their structure
+
+<B>Note:</B> Plant <I>models</I> are templates defined in the library (referenced by string names like "bean", "tomato"), while plant <I>instances</I> are actual plants built in the simulation (referenced by uint IDs). The shoot types are defined at the model level and captured when each instance is created.
+
+\subsection PlantArchPhenoMod Modifying Phenological Threshold Parameters
+
+Thresholds determining phenological transitions are set using the \ref PlantArchitecture::setPlantPhenologicalThresholds() method. The thresholds are in arbitrary time units, which should be consistent with the timestep units and units of other parameters. The table below describes each of the phenological parameters. Setting any parameter to a negative value will skip that phenological stage.
+
+~~~~~~
+PlantArchitecture plantarchitecture(&context);
+
+plantarchitecture.loadPlantModelFromLibrary( "bean" );
+uint plantID = plantarchitecture.buildPlantInstanceFromLibrary( nullorigin, 0 );
+
+plantarchitecture.setPlantPhenologicalThresholds( plantID, 0, 20, 10, 10, 5, 70 );
+~~~~~~
+
+\section PlantArchAddingModels Adding New Plant Models to the Library
+
+The PlantArchitecture plugin includes a streamlined system for adding new plant species to the built-in library. This section describes the workflow for implementing a new plant model.
+
+\subsection PlantArchAddWorkflow General Workflow
+
+Adding a new plant model to the library involves the following steps:
+
+1. **Create assets (if needed)** - Prepare texture images, OBJ models, or other visual assets if needed.
+2. **Implement the plant-specific methods** - Create the `initialize[*]Shoots()` and `build[*]()` methods that define the plant's architecture and parameters in PlantLibrary.cpp. You can find many examples in this file for existing plants.
+3. **Register the plant model** - Add a single registration line to \ref PlantArchitecture::initializePlantModelRegistrations in PlantLibrary.cpp to make the model available in the library. This can be found at the top of PlantLibrary.cpp, with examples for existing plants.
+
+A good approach is to start with an existing plant model that is similar to the new plant, and copy paste its code `initialize[*]Shoots()` and `build[*]()` for your new plant. You can then tweak parameters to achieve your desired result.
+
+\subsubsection PlantArchAddStep1 Step 1: Create Assets (if needed)
+
+Most plant models require visual assets located in `plugins/plantarchitecture/assets/`. You can either create your own, or copy existing assets from other plants if they are similar enough.
+
+<b>Texture Images (`assets/textures/`):</b>
+- **Leaf textures** - PNG images for leaf appearance (e.g., `NewPlantLeaf.png`)
+- **Bark textures** - JPG images for stem/trunk appearance (e.g., `NewPlantBark.jpg`)
+- **Flower/fruit textures** - Images for reproductive organs if applicable
+
+<b>3D Models (`assets/obj/`):</b>
+- **Leaf OBJ files** - For complex leaf shapes that can't be created procedurally
+- **Flower OBJ files** - 3D models for flowers (if the plant produces flowers)
+- **Fruit OBJ files** - 3D models for fruits (if applicable)
+
+<b>Asset Guidelines:</b>
+- Use PNG format for textures with transparency (leaves)
+- Use JPG format for opaque textures (bark, fruit)
+- Follow existing naming conventions: `[PlantName][OrganType].[ext]`
+- Ensure OBJ models follow the prototype coordinate system (see \ref PlantArchOrgans)
+
+\subsubsection PlantArchAddStep2 Step 2: Implement Plant-Specific Methods
+
+For a new plant called "newplant", you need to implement two methods in the PlantArchitecture class:
+
+**Method Declarations (add to \ref PlantArchitecture.h):**
+~~~~~~
+void initializeNewPlantShoots();
+uint buildNewPlant(const helios::vec3 &base_position);
+~~~~~~
+
+**Method Implementations (add to PlantLibrary.cpp):**
+
+The `initialize*Shoots()` method defines all shoot types and their parameters:
+~~~~~~{cpp}
+void PlantArchitecture::initializeNewPlantShoots() {
+    
+    // ---- Leaf Prototype ---- //
+    LeafPrototype leaf_prototype(context_ptr->getRandomGenerator());
+    leaf_prototype.leaf_texture_file[0] = "plugins/plantarchitecture/assets/textures/NewPlantLeaf.png";
+    leaf_prototype.leaf_aspect_ratio = 1.2f;
+    // ... set other leaf parameters
+    
+    // ---- Phytomer Parameters ---- //
+    PhytomerParameters phytomer_parameters(context_ptr->getRandomGenerator());
+    phytomer_parameters.internode.pitch = 0.f;
+    phytomer_parameters.internode.phyllotactic_angle = 137.5f;
+    phytomer_parameters.internode.color = RGB::brown;
+    phytomer_parameters.internode.image_texture = "plugins/plantarchitecture/assets/textures/NewPlantBark.jpg";
+    // ... set other internode parameters
+    
+    phytomer_parameters.petiole.radius = 0.002f;
+    phytomer_parameters.petiole.length = 0.05f;
+    // ... set other petiole parameters
+    
+    phytomer_parameters.leaf.prototype = leaf_prototype;
+    phytomer_parameters.leaf.pitch = 20.f;
+    // ... set other leaf parameters
+    
+    // ---- Shoot Parameters ---- //
+    ShootParameters shoot_parameters(context_ptr->getRandomGenerator());
+    shoot_parameters.phytomer_parameters = phytomer_parameters;
+    shoot_parameters.max_nodes = 20;
+    shoot_parameters.internode_length_max = 0.04f;
+    shoot_parameters.phyllochron_min = 3.f;
+    // ... set other shoot parameters
+    
+    // Register the shoot type
+    shoot_types["mainstem"] = shoot_parameters;
+}
+~~~~~~
+
+The `build*()` method creates the actual plant instance:
+~~~~~~{cpp}
+uint PlantArchitecture::buildNewPlant(const helios::vec3 &base_position) {
+    
+    if (shoot_types.empty()) {
+        helios_runtime_error("ERROR (PlantArchitecture::buildNewPlant): shoot types have not been initialized. You must initialize shoot types first.");
+    }
+    
+    uint plantID = addPlantInstance(base_position, 0);
+    
+    // Build the main stem
+    uint shootID = addBaseStemShoot(plantID, 1, base_position, 0.001f, 0.06f, 1.f, 1.f, "mainstem");
+    
+    // Set phenology thresholds (in days)
+    setPlantPhenologicalThresholds(plantID, 0, -1, -1, -1, -1, 9999); 
+    
+    return plantID;
+}
+~~~~~~
+
+\subsubsection PlantArchAddStep3 Step 3: Register the Plant Model
+
+Add a single registration line to the \ref PlantArchitecture::initializePlantModelRegistrations method in PlantLibrary.cpp:
+~~~~~~{cpp}
+void PlantArchitecture::initializePlantModelRegistrations() {
+    // ... existing registrations ...
+    
+    registerPlantModel("newplant", 
+        [this](){ initializeNewPlantShoots(); },
+        [this](const helios::vec3& pos){ return buildNewPlant(pos); });
+}
+~~~~~~
+
+\section PlantArchPruning Shoot Pruning and Hierarchical Management
+
+The PlantArchitecture plugin provides comprehensive methods for querying shoot hierarchy and performing pruning operations. These methods enable systematic management of plant structure based on branching patterns, shoot ranks, and topological relationships.
+
+\subsection PlantArchPruningHierarchy Querying Shoot Hierarchy
+
+Several methods are available to query the hierarchical structure of shoots within a plant:
+
+<table>
+    <tr><th>Method</th><th>Description</th></tr>
+    <tr><td>\\ref PlantArchitecture::getShootIDsByRank()</td><td>Returns shoots organized by branching rank/order in a vector of vectors.</td></tr>
+    <tr><td>\\ref PlantArchitecture::getShootHierarchyMap()</td><td>Returns a map of parent shoot IDs to their direct children.</td></tr>
+    <tr><td>\\ref PlantArchitecture::getAllDescendantShootIDs()</td><td>Returns all descendant shoots of a given shoot recursively.</td></tr>
+    <tr><td>\\ref PlantArchitecture::getChildShootIDs()</td><td>Returns direct child shoots of a given shoot.</td></tr>
+    <tr><td>\\ref PlantArchitecture::getParentShootID()</td><td>Returns the parent shoot ID (-1 for base shoots).</td></tr>
+    <tr><td>\\ref PlantArchitecture::getShootRank()</td><td>Returns the branching rank/order of a shoot.</td></tr>
+    <tr><td>\\ref PlantArchitecture::getAllShootIDs()</td><td>Returns all shoot IDs for a plant.</td></tr>
+    <tr><td>\\ref PlantArchitecture::getTerminalShootIDs()</td><td>Returns shoot IDs that have no children (terminal shoots).</td></tr>
+    <tr><td>\\ref PlantArchitecture::getShootDepth()</td><td>Returns the hierarchy depth of a shoot.</td></tr>
+    <tr><td>\\ref PlantArchitecture::getPathToRoot()</td><td>Returns the path from a shoot to the root shoot.</td></tr>
+</table>
+
+\subsection PlantArchPruningExamples Pruning Examples
+
+The hierarchical query methods enable various pruning strategies:
+
+**Pruning by Branching Order:**
+~~~~~~
+// Get shoots organized by rank
+auto shoots_by_rank = plantarchitecture.getShootIDsByRank(plantID);
+
+// Prune all shoots above rank 2 (remove higher-order branches)
+for (size_t rank = 3; rank < shoots_by_rank.size(); ++rank) {
+    for (uint shootID : shoots_by_rank[rank]) {
+        plantarchitecture.pruneBranch(plantID, shootID, 0);
+    }
+}
+~~~~~~
+
+**Terminal Shoot Thinning:**
+~~~~~~
+// Get terminal shoots for selective thinning
+auto terminal_shoots = plantarchitecture.getTerminalShootIDs(plantID);
+
+// Prune every other terminal shoot
+for (size_t i = 0; i < terminal_shoots.size(); i += 2) {
+    plantarchitecture.pruneBranch(plantID, terminal_shoots[i], 0);
+}
+~~~~~~
+
+**Pruning Entire Branch Systems:**
+~~~~~~
+// Remove all descendants of a specific shoot
+uint target_shoot = 5;
+auto descendants = plantarchitecture.getAllDescendantShootIDs(plantID, target_shoot);
+
+for (uint descendant : descendants) {
+    plantarchitecture.pruneBranch(plantID, descendant, 0);
+}
+~~~~~~
+
+The \\ref PlantArchitecture::getShootIDsByRank() method is particularly useful as it organizes shoots into a vector of vectors where the index represents the branching rank, making it easy to implement systematic pruning based on plant architecture principles.
+
+\section PlantArchCarbohydrate Carbohydrate Model
+
+The PlantArchitecture plugin includes an optional carbohydrate model that simulates carbon allocation and its effects on plant growth dynamics. This model tracks photosynthate accumulation, maintenance and growth respiration, carbon transfer between shoots, and dynamically adjusts growth rates based on carbon availability. For detailed information on using the carbohydrate model, see the \subpage CarbohydrateModelDoc.
+
+\section PlantArchNitrogen Nitrogen Model
+
+The PlantArchitecture plugin includes an optional nitrogen model that simulates nitrogen uptake, allocation, and stress effects on plant growth. This model tracks nitrogen in a three-level pool structure (root, available, and per-leaf pools), implements rate-limited nitrogen accumulation in leaves, simulates age-based nitrogen remobilization from old to young leaves, and calculates a nitrogen stress factor that other plugins can use to modify photosynthesis and growth rates. For detailed information on using the nitrogen model, see the \subpage NitrogenModelDoc.
+
+\section PlantArchQuery Retrieving Information from the Model
+
+\subsection PlantArchQueryobjIDs Getting Object IDs and Primitive UUIDs of Model Geometry
+
+The Object IDs and Primitive UUIDs of an entire plant, or organ groups in the plant, can be retrieved using several methods available in the PlantArchitecture class. These are listed in the table below.
+
+<table>
+    <tr><th>Method</th><th>Description</th></tr>
+    <tr> <td colspan=2> **Object IDs** </td> </tr>
+    <tr> <td>\ref PlantArchitecture::getAllPlantObjectIDs()</td><td>Returns a vector of Object IDs for all objects the entire plant.</td> </tr>
+    <tr> <td>\ref PlantArchitecture::getPlantInternodeObjectIDs()</td><td>Returns a vector of Object IDs for all internode objects.</td> </tr>
+    <tr> <td>\ref PlantArchitecture::getPlantPetioleObjectIDs()</td><td>Returns a vector of Object IDs for all petiole objects (Tube objects).</td> </tr>
+    <tr> <td>\ref PlantArchitecture::getPlantLeafObjectIDs()</td><td>Returns a vector of Object IDs for all leaf objects.</td> </tr>
+    <tr> <td>\ref PlantArchitecture::getPlantPeduncleObjectIDs()</td><td>Returns a vector of Object IDs for all peduncle objects (Tube objects).</td> </tr>
+    <tr> <td>\ref PlantArchitecture::getPlantFlowerObjectIDs()</td><td>Returns a vector of Object IDs for all flower objects.</td> </tr>
+    <tr> <td>\ref PlantArchitecture::getPlantFruitObjectIDs()</td><td>Returns a vector of Object IDs for all fruit objects.</td> </tr>
+    <tr> <td colspan=2> **Primitive UUIDs** </td> </tr>
+    <tr> <td>\ref PlantArchitecture::getAllPlantUUIDs(uint, bool)</td><td>Returns a vector of UUIDs for all primitives in the entire plant. Optionally includes hidden prototype primitives when \p include_hidden is set to true.</td> </tr>
+</table>
+
+Note that individual methods to get UUIDs for all organ types are not provided. Instead, the user can query the Object IDs for each organ type and then get the corresponding UUIDs using the Context method \ref helios::Context::getObjectPrimitiveUUIDs().
+
+\subsection PlantArchQueryUUIDs Getting Primitive UUIDs for Organ Sub-Components
+
+In some cases, it may be useful to get the UUIDs of sub-components that make up organ prototypes. For example, this is necessary in order to change the color or radiative properties of leaf veins or flower petals.
+
+If such granularity is present in the organ prototype models, these sub-components are separated based on primitive data labels assigned to them.
+
+| Organ | Primitive Data Label | Primitive Data Value String | Description |
+| ------| ------ | ------ | ------ |
+| **Leaves** ||||
+| Leaf/lamina | "object_label" | "leaf" | The main lamina of the leaf. |
+| veins | "object_label" | "veins" | The major veins of the leaf. |
+| petiolule | "object_label" | "petiolule" | The petiolule (i.e., petiole-like structure connecting a leaflet to the petiole in a compound leaf). |
+| **Flowers** ||||
+| Petals | "object_label" | "petals" | The petals of the flower. |
+| Sepals | "object_label" | "sepals" | The sepals (i.e., green part at base) of the flower. |
+| **Fruit** ||||
+| Fruit | "object_label" | "fruit" | The main body of the fruit. |
+| Sepals | "object_label" | "sepals" | The sepals (i.e., green part at base) of the fruit. |
+
+The UUIDs for a given sub-organ group can be retrieved by calling the Context method \ref helios::Context::filterPrimitivesByData(). Below is an example for getting the leaf vein UUIDs.
+
+~~~~~~
+std::vector<uint> plant_UUIDs = plantarchitecture.getAllPlantUUIDs( plantID );
+std::vector<uint> leaf_vein_UUIDs = context.filterPrimitivesByData( plant_UUIDs, "object_label", "veins" );
+~~~~~~
+
+For custom user-defined organ prototypes, users should follow the convention of grouping the above sub-components into separate object groups with the labels given in the table above.
+
+*/

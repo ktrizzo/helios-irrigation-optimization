@@ -1,0 +1,580 @@
+/*! \page "AerialLiDARDoc" Aerial %LiDAR Point Cloud Plugin Documentation
+
+ \image html AerialLiDAR.png
+
+ \tableofcontents
+
+ <p> <br><br> </p>
+
+ <table>
+   <tr>	
+      <th>Dependencies</th>
+      <td>NVIDIA CUDA 9.0+ <p>
+    	 Visualizer plug-in</td>
+   </tr>
+   <tr>	
+      <th>CMakeLists.txt</th>
+      <td>set( PLUGINS "aeriallidar" )</td>
+   </tr>
+   <tr>	
+      <th>Header File</th>
+      <td>#include "AerialLiDAR.h"</td>
+   </tr>
+   <tr>	
+      <th>Class</th>
+      <td>\ref AerialLiDARcloud</td>
+   </tr>
+ </table>
+
+ \section AerialLiDARissues Known Issues 
+
+ - The Aerial LiDAR plug-in requires the Visualizer plug-in to be loaded in the CMakeLists.txt file. 
+
+ \section AerialLiDARintro Introduction
+
+ The Aerial LiDAR plugin is used to process LiDAR data collected from an airborne platform into 2D and 3D raster data. The plugin is able to create the following data products on an arbitrary raster grid:
+
+ - Ground height (2D)
+ - Maximum vegetation height (2D)
+ - "Effective" vegetation height (2D)
+ - Ground cover fraction (2D)
+ - Leaf area index (2D)
+ - Leaf area density (3D)
+
+ \section AerialLiDARdepends Dependencies
+
+ <table>
+   <tr>	
+      <th>Package</th>
+      <th>\image html apple-logo.png</th>
+      <th>\image html unix-logo.png</th>
+      <th>\image html windows-logo.png</th>
+   </tr>
+   <tr>	
+      <td>NVIDIA CUDA 9.0+</td>
+      <td>Mac OSX: Not available</td>
+      <td>Use <a href="https://developer.nvidia.com/cuda-downloads">CUDA installer</a></td>
+      <td>Use <a href="https://developer.nvidia.com/cuda-downloads">CUDA installer</a></td>
+   </tr>
+ </table>
+
+ For help choosing the correct CUDA toolkit version for your system, consult this page: \ref ChoosingCUDA
+
+ Useful OS-specific information for installing CUDA can be found here: \ref DependentSoftware
+
+ If you are using a PC, it is likely you will need to increase the GPU timeout in the registry, otherwise calculations lasting longer than 2 secs. will timeout and kill your program. A guide on how to increase the timeout can be found here: \ref PCGPUTimeout
+
+ \section AerialLiDARConstructor Class Constructor
+
+ <table>
+   <tr>	
+      <th>Constructors</th>
+   </tr>
+   <tr>	
+     <td>\ref AerialLiDARcloud( void )</td>
+   </tr>
+ </table>
+
+ The \ref AerialLiDARcloud class contains point cloud data, and is used to perform processing operations on the data. The class constructor does not take any arguments.
+
+ \section AerialLiDARbg Background information
+  
+ \subsection AerialLiDARcoord Coordinates and scan pattern
+
+ The plug-in assumes that laser pulses are launched from some surface above the canopy downward. When processing LiDAR data, each laser pulse is defined by 1) the (x,y,z) coordinates of the laser-object intersection point, and 2) the angle of the laser traversal direction in spherical coordinates (e.g., for a laser pulse traveling directly downward, the zenith angle is \f$\theta=\pi\f$ and azimuth \f$\varphi\f$ is arbitrary).
+
+ \image html LaunchSchematic.jpeg
+ 
+ \subsection AerialLiDARreturn Difference between discrete-return and full-waveform LiDAR data
+
+ The laser beam emitted from a LiDAR instrument has some finite diameter, which increases with distance from the scanner. In many cases, the beam diameter may be larger than the width of individual leaves by the time it reaches the canopy. This means that a single laser pulse may intersect multiple objects along its path to the ground.
+
+ For a "discrete-return" instrument, only one (or sometimes a few) hit points are recorded per laser pulse. The distance from the scanner recorded for the hit point is an effective average distance to all objects intersected by the beam.
+
+ By contrast "full-waveform" instruments are able to record multiple hit point locations along a single laser pulse by analyzing the return timeseries or "waveform". This class of instruments is able to process the timeseries of pulse returns into separate distances. Full-waveform instruments are preferred because they provide more information, particularly in dense canopies where a discrete-return instrument would rarely record the location of the ground. Technically, full-waveform instruments ultimately output discrete hit points, but for the purposes of this documentation we will consider discrete-return data to have a single hit point per laser pulse, and full-waveform data to have an unlimited number of hit points per laser pulse.
+
+ \image html plugins/aeriallidar/doc/images/WaveformSchematic.jpeg
+
+ \section AerialSetup Data processing setup
+
+ Processing begins by constructing an instance of \ref AerialLiDARcloud and
+ adding one or more aerial scans. Scans may be created manually using
+ \ref AerialLiDARcloud::addScan() and \ref AerialLiDARcloud::addHitPoint(), but are usually imported from an XML
+ file with \ref AerialLiDARcloud::loadXML(). The same XML description can also define the 3-D
+ grid used for binning hits. After the scans and grid are loaded, call
+ \ref AerialLiDARcloud::calculateHitGridCell() so that each return is associated with the
+ appropriate grid cell.
+
+ \section AerialScanIO Loading scan data from file
+
+ Scan metadata is typically specified by loading an XML file containing the relevant metadata for each scan.  The XML file specifies the path to an ASCII text file that contains the data for each scan.  The code below gives a sample XML file for loading multiple scans.  Not all entries are required. At a minimum, this consists of the Cartesian (x,y,z) coordinates of each hit in the scan.  Additional optional information can be specified for each hit point, as given in the table below.
+
+ ~~~~~~{.html}
+ <helios>
+
+	<scan>
+	  <filename> /path/to/data/file.xyz </filename>
+	  <ASCII_format> x y z zenith azimuth target_count target_index </ASCII_format>
+	</scan>
+	
+  </helios>
+  ~~~~~~
+
+ The ASCII text file containing the data is a plain text file, where each row corresponds to a hit point and each column is some data value associated with that hit point.  The "ASCII_format" tag defines the column format of the ASCII text file (in this case, file.xyz).  Each entry in the list specifies the meaning of each column.  Possible fields are listed in the table below:
+
+ <table>
+   <tr>	
+     <th>Label</th>
+     <th>Description</th>
+     <th>Default behavior</th>
+   </tr>
+   <tr>
+     <td>x</td>
+     <td>x-component of the (x,y,z) Cartesian coordinate of the hit point.</td>
+     <td>None: REQUIRED</td>
+   </tr>
+   <tr>
+     <td>y</td>
+     <td>y-component of the (x,y,z) Cartesian coordinate of the hit point.</td>
+     <td>None: REQUIRED</td>
+   </tr>
+   <tr>
+     <td>z</td>
+     <td>z-component of the (x,y,z) Cartesian coordinate of the hit point.</td>
+     <td>None: REQUIRED</td>
+   </tr>
+   <tr>
+     <td>target_count</td>
+     <td>Total number of returns/hits along the hit's beam path.</td>
+     <td>REQUIRED for full-waveform; N/A for discrete-return</td>
+   </tr>
+   <tr>
+     <td>target_index</td>
+     <td>Index of returns/hits along the hit's beam path (target_index=0 for first return, =1 for second return, =target_count-1 for last return). NOTE: target indices can start at 0 or 1 for the first return as long as it is consitent throughout.</td>
+     <td>REQUIRED for full-waveform; N/A for discrete-return</td>
+   </tr>
+   <tr>
+     <td>zenith (or zenith_rad)</td>
+     <td>Zenithal angle (degrees) of scan ray direction corresponding to the hit point. If "theta_rad" is used, theta has units of radians rather than degrees.</td>
+     <td>180 (or \f$\pi\f$)</td>
+   </tr>
+   <tr>
+     <td>azimuth (or phi_rad)</td>
+     <td>Azithal angle (degrees) of scan ray direction corresponding to the hit point. If "phi_rad" is used, phi has units of radians rather than degrees.</td>
+     <td>0</td>
+   </tr>
+   <tr>
+     <td>r (or r255)</td>
+     <td>red component of (r,g,b) hit color.  If "r" tag is used, r is a floating point value and 0<r<1.  If "r255" is used, r is an integer and 0<r<255.</td>
+											    <td>r=1 or r255=255</td>
+   </tr>
+   <tr>
+     <td>g (or g255)</td>
+     <td>green component of (r,g,b) hit color.  If "g" tag is used, g is a floating point value and 0<g<1.  If "g255" is used, g is an integer and 0<g<255.</td>
+     <td>g=0 or g255=0</td>
+   </tr>
+   <tr>
+     <td>b (or b255)</td>
+     <td>blue component of (r,g,b) hit color.  If "b" tag is used, b is a floating point value and 0<b<1.  If "b255" is used, b is an integer and 0<b<255.</td>
+      <td>b=0 or b255=0</td>
+    </tr>
+    <tr>
+      <td>(label)</td>
+      <td>User-defined floating-point data value.  "label" can be any string describing data.  For example, "reflectance", "temperature", etc. </td>
+      <td>N/A</td>
+    </tr>
+ </table>
+
+ The XML file can be automatically loaded into the point cloud using the \ref AerialLiDARcloud::loadXML() function, as illustrated below.
+  
+ ~~~~~~{.cpp}
+   #include "Context.h"
+   #include "LiDAR.h"
+
+   using namespace helios;
+
+   int main(){
+
+      LiDARcloud pointcloud; //Initialize the LiDAR point cloud
+
+      pointcloud.loadXML("/path/to/file.xml");
+      
+  }
+  ~~~~~~
+
+ \section AerialLiDARgrid Establishing grid cells
+
+ Rectangular grid cells are used as the basis for processing point cloud data.  For example, total leaf area (or leaf area density) may be calculated for each grid cell. Grid cells or "voxels" are parallelpiped volumes.  The top and bottom faces are always horizontal, but the cells can be rotated in the azimuthal direction. 2D raster data such as the ground height is given on a rectangular grid.
+
+ Grid cells are defined by specifying the (x,y,z) position of its center, and the size of the cell in the x, y, and z directions.  Additional optional information can also be provided for grid cells, which are detailed below.
+
+ <table>
+   <tr>	
+     <th>Tag</th>
+     <th>Description</th>
+     <th>Default behavior</th>
+   </tr>
+   <tr>
+     <td>center</td>
+     <td>(x,y,z) Cartesian coordinates of grid center.</td>
+     <td>None: required.</td>
+   </tr>
+   <tr>
+     <td>size</td>
+     <td>Size of the grid in x, y, and z directions.</td>
+     <td>None: required.</td>
+   </tr>
+   <tr>
+     <td>rotation</td>
+     <td>Azimuthal rotation of the grid in degrees.</td>
+     <td>0</td>
+    </tr>
+   <tr>
+     <td>Nx</td>
+     <td>Grid cell subdivisions in the x-direction.</td>
+     <td>1</td>
+   </tr>
+   <tr>
+     <td>Ny</td>
+     <td>Grid cell subdivisions in the y-direction.</td>
+     <td>1</td>
+    </tr>
+   <tr>
+     <td>Nz</td>
+     <td>Grid cell subdivisions in the z-direction.</td>
+     <td>1</td>
+   </tr>
+ </table>
+
+ The grid cell subdivisions options allow the cells to be easily split up into a grid of smaller cells.  For example, Nx=Ny=Nz=3 would create 27 grid cells similar to a "Rubik's cube".
+
+ Grid cell options can be specified in an XML file using the tags listed in the table above.  Multiple grid cells are added by simply adding more \<grid\>...\</grid\> groups to the XML file.
+
+ ~~~~~~{.xml}
+   <grid>
+	 \<center> 0 0 0.5 \</center>
+	 \<size> 100 100 10 </size>
+	 \<rotation> 30 </rotation> 
+	 \<Nx> 3 </Nx> 
+	 \<Ny> 3 </Ny> 
+	 \<Nz> 3 </Nz> 
+  </grid>
+  ~~~~~~
+
+ \section AerialLiDARprocess Processing LiDAR data
+
+ \subsection AerialRasters 2D raster height maps
+
+ Run \ref AerialLiDARcloud::generateHeightModel() to create rasters of ground elevation,
+ vegetation height and the maximum observed hit height. The routine fits
+ planes to the lowest and highest points within each grid cell using a
+ RANSAC algorithm. Heights for a given cell can later be queried using
+ \ref AerialLiDARcloud::getCellGroundHeight(), \ref AerialLiDARcloud::getCellVegetationHeight() and
+ \ref AerialLiDARcloud::getCellMaximumHitHeight().
+
+ ~~~~~~{.cpp}
+   AerialLiDARcloud cloud;
+   cloud.loadXML("/path/to/file.xml");
+   cloud.calculateHitGridCell();
+   cloud.generateHeightModel(1000,0.2f,0.6f,0.4f,0.6f);
+ ~~~~~~
+
+ \subsection AerialGroundCover 2D raster ground cover fraction
+
+ After the hit points have been associated with grid cells, call
+ calculateCoverFraction() to compute the fraction of ground returns
+ within each (x,y) cell. Values are retrieved via
+ \ref AerialLiDARcloud::getCellCoverFraction().
+
+ ~~~~~~{.cpp}
+   cloud.calculateCoverFraction();
+   float f = cloud.getCellCoverFraction( helios::make_int2(0,0) );
+ ~~~~~~
+
+ \subsection AerialLeafArea Leaf area
+
+ Leaf area index and leaf area density per voxel are obtained with
+ \ref AerialLiDARcloud::calculateLeafAreaGPU(). This function assumes a constant leaf angle
+ distribution and uses the ray statistics computed for each grid cell.
+ Individual voxel totals are accessed with \ref AerialLiDARcloud::getCellLeafArea() and
+ \ref AerialLiDARcloud::getCellLeafAreaDensity().
+
+ ~~~~~~{.cpp}
+   cloud.calculateLeafAreaGPU(0.5f);
+ ~~~~~~
+
+<!--
+  
+  \subsection LiDARtri Hit point triangulation
+
+  A triangulation between adjacent points is typically required for any of the available data processing algorithms.  In the triangulation, adjacent hit points are connected to form a mesh of triangular solid surfaces.  The algorithm for performing this triangulation is described in detail in <a href="dx.doi.org/doi:10.1016/j.rse.2017.03.011">Bailey and Mahaffee (2017a)</a>.
+
+  There are two possible options to be specified when performing the triangulation.  A required option is \f$L_{max}\f$, which is the maximum allowable length of a triangle side.  This parameter prevents triangles from connecting adjacent leaves (i.e., we only want triangles to be formed with neighboring points on the same leaf).  Typically we want \f$L_{max}\f$ to be much larger than the spacing between adjacent hit points, and much smaller than the characteristic length of a leaf.  For example, <a href="dx.doi.org/doi:10.1016/j.rse.2017.03.011">Bailey and Mahaffee (2017a)</a> used 5cm for a cottonwood tree.
+
+  Another optional parameter is the maximum allowable aspect ratio of a triangle, which is the ratio of the length of the longest triangle side to the shortest triangle side. This has a similar effect as the \f$L_{max}\f$ parameter, and works better in some cases.
+
+  The following code sample illustrates how to perform a triangulation.
+
+  <div style="padding:0.5px;background-color:#D0D0D0 ;line-height:1.2;">
+  <pre><code> #include "Context.h"
+  #include "LiDAR.h"
+
+  using namespace helios;
+
+  int main( void ){
+
+     %LiDARcloud pointcloud; //Initialize the LiDAR point cloud
+
+     pointcloud.loadXML("/path/to/file.xml");  //Load the XML file
+
+     pointcloud.triangulateHitPoints( 0.05, 5 ); //Perform triangulation with Lmax=0.05 and maximum aspect ratio of 5 
+      
+  }</code></pre></div>
+
+  
+
+      \image html HitTable.png "The rectangular scan pattern creates a two-dimensional table of scan directions in spherical space (left).  If an object was hit by the scanner at a given scan direction, the instrument records the Cartesian coordinate of that hit location (right)."
+
+\subsection LiDARleafarea Calculating leaf area for each grid cell
+
+  Using the triangulation and defined grid cells, the plug-in can calculate the leaf area (and leaf area density) for each grid cell.  The algorithm for calculating leaf area is described in detail in <a href="dx.doi.org/doi:10.1088/1361-6501/aa5cfd">Bailey and Mahaffee (2017b)</a>.
+
+  Performing the calculations is simple and requires no inputs, which is illustrated with the following code sample. Note that the leaf area calculation requires that the triangulation has been performed beforehand.  If no triangulation is available, the plug-in will assume a uniformly distributed leaf angle orientation (\f$G=0.5\f$).  The leaf area calculation also requires that at least one grid cell was defined.
+
+  <div style="padding:0.5px;background-color:#D0D0D0 ;line-height:1.2;">
+  <pre><code> #include "Context.h"
+  #include "LiDAR.h"
+
+  using namespace helios;
+
+  int main( void ){
+
+     %LiDARcloud pointcloud; //Initialize the LiDAR point cloud
+
+     pointcloud.loadXML("/path/to/file.xml");  //Load the XML file
+
+     pointcloud.triangulateHitPoints( 0.05, 5 ); //Perform triangulation with Lmax=0.05 and maximum aspect ratio of 5
+
+     pointcloud.calculateLeafAreaGPU(); //Calculate leaf area for each grid cell
+      
+  }</code></pre></div>
+
+  \subsection LiDARresonstruction Plant reconstruction
+
+  A leaf-by-leaf reconstruction can be performed for the plant of interest using the method described in <a href="https://www.sciencedirect.com/science/article/pii/S0034425718300191?via%3Dihub">Bailey and Ochoa (2018)</a>. The reconstruction utilizes the triangulation and leaf area computations to ensure the correct leaf angle and area distributions on average, and thus requires that these routines have been run before performing the reconstruction.
+
+  There are two types of available reconstructions. One is a triangular reconstruction that directly uses triangles resulting from the triangulation to produce the reconstruction. The advantage is that it doesn not require any assumption about the shape of the leaf and can give a more direct reconstruction in some cases, however this reconstruction is typically not recommended as it often results in many small triangle groups that don't necessarily resemble actual leaves. This reconstruction is performed using the \ref leafReconstructionTriangular() function, whose arguments are thresholds for the minimum and maximum area of reconstructed triangular leaf groups.
+
+  The other type of reconstruction is the "Alpha Mask" reconstruction, which replaces the triangle groups with a "prototype" leaf (which is an alpha mask). This ensures that all reconstructed leaves are representative of an actual leaf in terms of shape and size. This reconstruction is performed using the \ref leafReconstructionAlphaMask() function. This function's arguments, in addition to area thresholds, are the aspect ratio of the prototype leaf (length along midrib divided by width perpendicular to midrib) and the path to a PNG image file to be used for the leaf alpha mask.
+
+  There is a function that can automatically add all reconstructed elements (triangles or alpha masks) to the Helios Context, which is \ref addLeafReconstructionToContext().
+  
+  Below is an example of performing a reconstruction using alpha masks and adding the alpha masks to the Context.
+
+  <div style="padding:0.5px;background-color:#D0D0D0 ;line-height:1.2;">
+  <pre><code> #include "Context.h"
+  #include "LiDAR.h"
+
+  using namespace helios;
+
+  int main( void ){
+
+     %LiDARcloud pointcloud; //Initialize the LiDAR point cloud
+
+     pointcloud.loadXML("/path/to/file.xml");  //Load the XML file
+
+     pointcloud.triangulateHitPoints( 0.05, 5 ); //Perform triangulation with Lmax=0.05 and maximum aspect ratio of 5
+
+     pointcloud.calculateLeafAreaGPU(); //Calculate leaf area for each grid cell
+
+     pointcloud.leafReconstructionAlphaMask( 0.001, 0.02, "plugins/visualizer/textures/ElmLeaf.png" ); //Perform the reconstruction
+
+     Context context; //Initialize the Context
+
+     pointcloud.addLeafReconstructionToContext( &context );
+      
+  }</code></pre></div>
+
+  \section LiDARvis Visualizing results
+
+  Results can be visualized using the Visualizer plug-in for Helios.  There are two possible means for doing so.  First, is to add the relevant geometry to the Context, then visualize primitives in the Context using the Visualizer.  This works for the triangulation and plant reconstructions, but cannot be used to visualize just the point cloud since there is no "point" primitive in the Context. The next section describes how to accomplish this.
+
+  The second option is to add any geometry directly to the Visualizer.  There are several functions build in to the LiDAR plug-in that can to this automatically, which are listed below.
+
+  <table>
+    <tr>	
+      <th>Function</th>
+      <th>Description</th>
+    </tr>
+    <tr>
+      <td>\ref LiDARcloud::addHitsToVisualizer( Visualizer * visualizer, const uint pointsize )</td>
+      <td>Add all hits in the point cloud to the visualizer.</td>
+    </tr>
+    <tr>
+      <td>\ref LiDARcloud::addGridToVisualizer( Visualizer * visualizer )</td>
+      <td>Add all grid cells to the visualizer, which are displayed as translucent voxels.</td>
+    </tr>
+    <tr>
+      <td>\ref LiDARcloud::addTrianglesToVisualizer( Visualizer * visualizer )</td>
+      <td>Add all triangles to the visualizer, which are colored by the r-g-b color value.</td>
+    </tr>
+    <tr>
+      <td>\ref LiDARcloud::addTrianglesToVisualizer( Visualizer * visualizer, const uint gridcell )</td>
+      <td>Add triangles from a specified grid cell to the visualizer, which are colored by the r-g-b color value.</td>
+    </tr>
+  </table>
+
+  The following code sample illustrates how to visualize the point cloud.
+
+  <div style="padding:0.5px;background-color:#D0D0D0 ;line-height:1.2;">
+  <pre><code>  #include "Context.h"
+   #include "LiDAR.h"
+   #include "Visualizer.h"   
+
+   using namespace helios;
+
+   int main( void ){
+
+      %LiDARcloud pointcloud; //Initialize the LiDAR point cloud
+
+      pointcloud.loadXML("/path/to/file.xml");  //Load the XML file
+
+      %Visualizer vis( 1000 ); //Initialize the visualizer
+
+      pointcloud.addHitsToVisualizer( &vis, 1 );  //Add the hit points to visualizer
+
+      vis.plotInteractive();
+      
+   }</code></pre></div>
+
+  \section LiDARcontext Adding geometry to the Context
+
+  \section LiDARoutput Writing results to file
+
+  Results of data processing can be easily written to file for external analysis.  The following table lists these functions.  Data is written to an ASCII text file, where each line in the file corresponds to a different data point (e.g., hit point, triangle, etc.).
+
+  <table>
+    <tr>	
+      <th>Function</th>
+      <th>Description</th>
+    </tr>
+    <tr>
+      <td>\ref LiDARcloud::exportTriangleNormals( const char* filename ) </td>
+      <td>Write the unit normal vectors [nx ny nz] of all triangles formed from triangulation.</td>
+    </tr>
+    <tr>
+      <td>\ref LiDARcloud::exportTriangleNormals( const char* filename, const int gridcell ) </td>
+      <td>Write the unit normal vectors of triangles formed from triangulation that reside in a specified grid cell.</td>
+    </tr>
+    <tr>
+      <td>\ref LiDARcloud::exportTriangleAreas( const char* filename ) </td>
+      <td>Write the areas of all triangles formed from triangulation.</td>
+    </tr>
+    <tr>
+      <td>\ref LiDARcloud::exportTriangleAreas( const char* filename, const int gridcell ) </td>
+      <td>Write the areas of triangles formed from triangulation that reside in a specified grid cell.</td>
+    </tr>
+    <tr>
+      <td>\ref LiDARcloud::exportLeafAreas( const char* filename ) </td>
+      <td>Write the leaf area contained within each voxel.  Each line of the output file corresponds to the total leaf area within each voxel.</td>
+    </tr>
+    <tr>
+      <td>\ref LiDARcloud::exportLeafAreaDensities( const char* filename ) </td>
+      <td>Write the leaf area density of each voxel.  Each line of the output file corresponds to the leaf area density of each voxel.</td>
+    </tr>
+  </table>
+
+  The following code sample illustrates an example of how to write results to file.
+
+  <div style="padding:0.5px;background-color:#D0D0D0 ;line-height:1.2;">
+  <pre><code>  #include "Context.h"
+   #include "LiDAR.h"
+
+   using namespace helios;
+
+   int main( void ){
+
+      %LiDARcloud pointcloud; //Initialize the LiDAR point cloud
+
+      pointcloud.loadXML("/path/to/file.xml");  //Load the XML file
+
+      pointcloud.triangulateHitPoints( 0.05, 5 ); //Perform triangulation with Lmax=0.05 and maximum aspect ratio of 5
+
+      uint Ncells = pointcloud.getGridCellCount(); //Get the number of grid cells
+      
+      char f_normals[50], f_areas[50];
+      for( uint i=0; i<Ncells; i++ ){ //loop over grid cells
+	       \c// define strings with output file names
+	       sprintf(f_normals,"../output/triangle_normals_%d.txt",i);
+	       sprintf(f_areas,"../output/triangle_areas_%d.txt",i);
+
+	       pointcloud.exportTriangleNormals( f_normals, i );
+	       pointcloud.exportTriangleAreas( f_areas, i );
+      }
+      pointcloud.exportLeafAreas( "../output/leaf_areas.txt" );
+      pointcloud.exportLeafAreaDensities( "../output/leaf_area_densities.txt" );
+      
+   }</code></pre></div>
+
+   \section AerialSynth Generating synthetic aerial LiDAR data
+
+   \subsection AerialScanMetadata Synthetic scan metadata
+
+ Each scan has a set of parameters or "metadata" that must be specified in order to process the data.  Some parameters are optional, while some are required.  The following metadata is needed to define the overall scan itself, in addition to individual scan hit points:
+
+ <table>
+   <tr>	
+     <th>Metadata</th>
+     <th>Description</th>
+     <th>Default behavior</th>
+   </tr>
+   <tr>
+     <td>center</td>
+     <td>(x,y,z) coordinate of the center of the surface from which ra</td>
+     <td>None: REQUIRED</td>
+   </tr>
+   <tr>
+     <td>N<sub>theta</sub></td>
+     <td>Number of scan points in the theta (zenithal) direction, i.e., number of rows in scan point table.</td>
+     <td>None: REQUIRED</td>
+   </tr>
+   <tr>
+     <td>\f$\theta\f$<sub>min</sub> (degrees)</td>
+     <td>Minimum scan theta (zenital) angle. \f$\theta\f$<sub>min</sub>=0 if the scan starts from upward vertical, \f$\theta\f$<sub>min</sub>=90 is the scan starts from horizontal, etc. </td>
+     <td>0</td>
+   </tr>
+   <tr>
+     <td>\f$\theta\f$<sub>max</sub> (degrees)</td>
+     <td>Maximum scan theta (zenital) angle. \f$\theta\f$<sub>max</sub>=90 if the scan ends at horizontal, \f$\theta\f$<sub>min</sub>=180 is the scan ends at downward vertical, etc. </td>
+     <td>180</td>
+   </tr>
+   <tr>
+     <td>N<sub>phi</sub></td>
+     <td>Number of scan points in the phi (azimuthal) direction, i.e., number of rows in scan point table.</td>
+     <td>None: REQUIRED</td>
+   </tr>
+   <tr>
+     <td>\f$\varphi\f$<sub>min</sub> (degrees)</td>
+     <td>Minimum scan phi (azimuthal) angle. \f$\varphi\f$<sub>min</sub>=0 if the scan starts pointing in the +x direction, \f$\varphi\f$<sub>min</sub>=90 if the scan starts pointing in the +y direction, etc. </td>
+     <td>0</td>
+   </tr>
+   <tr>
+     <td>\f$\varphi\f$<sub>max</sub> (degrees)</td>
+     <td>Maximum scan phi (azimuthal) angle. \f$\varphi\f$<sub>max</sub>=90 if the scan ends pointing in the +y direction, \f$\varphi\f$<sub>min</sub>=180 if the scan ends pointing in the -x direction, etc. NOTE: \f$\varphi\f$<sub>max</sub> could be greater than 360 if \f$\varphi\f$<sub>min</sub>>0 and the scanner makes a full rotation in the in the azimuthal direction, in which case \f$\varphi\f$<sub>max</sub>=\f$\varphi\f$<sub>min</sub>+360.</td>
+     <td>360</td>
+   </tr>
+   <tr>
+     <td>translation</td>
+     <td>Global (x,y,z) translation to be applied to entire scan, including the origin and all hit ponts.</td>
+     <td>No translation.</td>
+   </tr>
+   <tr>
+     <td>rotation (degrees)</td>
+     <td>Global spherical rotation (theta,phi) to be applied to the entire scan, including the origin and all hit ponts.</td>
+     <td>No rotation.</td>
+   </tr>
+ </table>
+
+-->
+
+*/

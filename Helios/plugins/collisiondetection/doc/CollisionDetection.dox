@@ -1,0 +1,534 @@
+/*! \page "CollisionDetectionDoc" Collision Detection Plugin Documentation
+
+ \tableofcontents
+
+ <p> <br><br> </p>
+
+ <table>
+   <tr>
+      <th>Dependencies</th>
+      <td>OpenMP (recommended), NVIDIA CUDA 9.0+ (optional)</td>
+   </tr>
+   <tr>
+     <th>CMakeLists.txt</th>
+     <td>set( PLUGINS "collisiondetection" )</td>
+   </tr>
+   <tr>
+     <th>Header File</th>
+     <td>#include "CollisionDetection.h"</td>
+   </tr>
+   <tr>
+     <th>Class</th>
+     <td>\ref CollisionDetection</td>
+   </tr>
+ </table>
+
+\section CDDepends Dependencies
+
+<table>
+    <tr>
+        <th>Package</th>
+        <th>Status</th>
+        <th>\image html apple-logo.png</th>
+        <th>\image html unix-logo.png</th>
+        <th>\image html windows-logo.png</th>
+    </tr>
+    <tr>
+        <td>OpenMP</td>
+        <td><b>Recommended</b></td>
+        <td>Usually available (via libomp)</td>
+        <td>Usually available</td>
+        <td>Usually available</td>
+    </tr>
+    <tr>
+        <td>NVIDIA CUDA 9.0+ (optional)</td>
+        <td><b>Optional</b></td>
+        <td>Mac OSX: Not available</td>
+        <td>Use <a href="https://developer.nvidia.com/cuda-downloads">CUDA installer</a></td>
+        <td>Use <a href="https://developer.nvidia.com/cuda-downloads">CUDA installer</a></td>
+    </tr>
+</table>
+
+<b>Performance Note:</b> OpenMP is strongly recommended for production use. The plugin will work without OpenMP using serial CPU execution, but performance will be significantly slower for large scenes.
+
+For help choosing the correct CUDA toolkit version and accompanying OptiX version for your system, consult this page: \ref ChoosingCUDA
+
+Useful OS-specific information for installing CUDA can be found here: \ref DependentSoftware
+
+If you are using a PC, it is likely you will need to increase the GPU timeout in the registry, otherwise calculations lasting longer than 2 secs. will timeout and kill your program. A guide on how to increase the timeout can be found here: \ref PCGPUTimeout
+
+<b>Note:</b> CUDA is optional for this plugin. The collision detection system will work on CPU-only systems. OpenMP provides parallel CPU execution and is recommended for best performance. When neither GPU nor OpenMP is available, the plugin falls back to serial CPU execution with a performance warning.
+
+ \section CDIntro Introduction
+
+ This plugin provides comprehensive collision detection and spatial analysis capabilities for arbitrary 3D geometry using high-performance GPU-accelerated spatial data structures. The system uses a Bounding Volume Hierarchy (BVH) to efficiently perform various spatial queries including collision detection, ray tracing, cone-based path finding, and grid-based statistical analysis.
+
+ The collision detection system supports both CPU and GPU acceleration with automatic fallback. When CUDA is available, the plugin automatically uses GPU kernels to perform parallel spatial queries, providing significant speedup for large scenes. The system gracefully falls back to CPU computation when GPU resources are unavailable.
+
+ Key features include:
+ - **Collision Detection**: Fast primitive-to-primitive and primitive-to-object collision queries
+ - **Ray Tracing**: High-performance ray casting with batch processing and GPU acceleration  
+ - **Cone-Based Queries**: Optimal path detection and obstacle avoidance for directional applications
+ - **Grid-Based Analysis**: Voxel intersection and statistical analysis for spatial modeling
+ - **Advanced BVH Management**: Automatic rebuilding, tree-based optimization, and hierarchical structures
+ - **GPU Acceleration**: CUDA-accelerated queries with Structure-of-Arrays (SOA) optimization
+ - **Spatial Optimization**: Distance-based filtering and nearest neighbor queries
+ - **Memory Efficiency**: Optimized data structures with automatic memory management
+
+ \section CDConstructor CollisionDetection Class Constructor
+
+ <table>
+   <tr>	
+      <th>Constructor</th>
+   </tr>
+   <tr>	
+     <td>\ref CollisionDetection( helios::Context* context )</td>
+   </tr>
+ </table>
+
+ The \ref CollisionDetection class is initialized by passing a pointer to the Helios context as an argument to the constructor. The constructor automatically:
+ - Validates the context pointer (throws exception if null)
+ - Enables GPU acceleration if CUDA is available
+ - Sets default parameters: max_collision_distance = 10.0f, tree_isolation_distance = 5.0f
+ - Enables automatic BVH rebuilds and diagnostic messages
+
+ ~~~~~~{.cpp}
+ CollisionDetection collision(&context); //declare the collision detection system
+ ~~~~~~
+
+ \section CDDataStructures Core Data Structures
+
+ The CollisionDetection plugin defines several core data structures for different types of spatial queries:
+
+ \subsection CDRayStructures Ray Tracing Structures
+
+ ~~~~~~{.cpp}
+ struct RayQuery {
+     helios::vec3 origin;
+     helios::vec3 direction; // Should be normalized
+     float max_distance;     // Negative = infinite
+     std::vector<uint> target_UUIDs; // Empty = all primitives
+ };
+
+ struct HitResult {
+     bool hit;
+     float distance;
+     uint primitive_UUID;
+     helios::vec3 intersection_point;
+     helios::vec3 normal;
+     float path_length; // For voxel processing
+ };
+
+ struct RayTracingStats {
+     size_t total_rays_cast;
+     size_t total_hits;
+     size_t bvh_nodes_visited;
+     float average_ray_distance;
+ };
+ ~~~~~~
+
+ \subsection CDConeStructures Cone-Based Query Structures
+
+ ~~~~~~{.cpp}
+ struct Cone {
+     helios::vec3 apex;        // Cone apex/tip position
+     helios::vec3 axis;        // Normalized axis direction
+     float half_angle;         // Half-angle in radians
+     float height;             // Height of cone (0 = infinite)
+ };
+
+ struct OptimalPathResult {
+     helios::vec3 direction;   // Normalized optimal direction
+     int collisionCount;       // Number of collisions in optimal path
+     float confidence;         // Confidence measure (0-1)
+ };
+ ~~~~~~
+
+ \section CDUse Using the Collision Detection Plugin
+
+ \subsection CDBasicSetup Basic Setup
+
+ The collision detection class provides comprehensive spatial query capabilities. To begin, declare an instance of the CollisionDetection class:
+
+ ~~~~~~{.cpp}
+ CollisionDetection collision(&context); //declare the collision detection system
+ ~~~~~~
+
+ \subsection CDCollisionDetection Basic Collision Detection
+
+ The collision detection system features **automatic BVH management**. The BVH is built automatically when needed:
+
+ ~~~~~~{.cpp}
+ // Find all primitives that collide with a specific primitive
+ uint target_UUID = some_primitive_UUID;
+ std::vector<uint> colliding_UUIDs = collision.findCollisions(target_UUID);
+
+ // Find collisions for multiple primitives at once
+ std::vector<uint> query_UUIDs = {UUID1, UUID2, UUID3};
+ std::vector<uint> all_collisions = collision.findCollisions(query_UUIDs);
+
+ // Mixed primitive and object collision detection
+ std::vector<uint> primitive_UUIDs = {UUID1, UUID2};
+ std::vector<uint> object_IDs = {objID1, objID2};
+ std::vector<uint> mixed_collisions = collision.findCollisions(primitive_UUIDs, object_IDs);
+
+ // Restricted collision detection (only test against specific targets)
+ std::vector<uint> target_UUIDs = {UUID3, UUID4};
+ std::vector<uint> target_objects = {objID3};
+ std::vector<uint> restricted_collisions = collision.findCollisions(
+     primitive_UUIDs, object_IDs, target_UUIDs, target_objects);
+ ~~~~~~
+
+ \subsection CDRayTracing Ray Tracing Operations
+
+ The plugin provides comprehensive ray tracing capabilities:
+
+ ~~~~~~{.cpp}
+ // Single ray casting
+ helios::vec3 origin = make_vec3(0, -1, 0);
+ helios::vec3 direction = normalize(make_vec3(0, 1, 0));
+ HitResult result = collision.castRay(origin, direction, 10.0f);
+
+ if( result.hit ){
+     std::cout << "Hit primitive " << result.primitive_UUID
+               << " at distance " << result.distance << std::endl;
+     std::cout << "Intersection point: " << result.intersection_point << std::endl;
+ }
+
+ // Batch ray casting with statistics
+ std::vector<RayQuery> queries;
+ queries.push_back({origin, direction, 10.0f, {}});
+ queries.push_back({make_vec3(1, -1, 0), direction, 10.0f, {}});
+
+ RayTracingStats stats;
+ std::vector<HitResult> results = collision.castRays(queries, &stats);
+
+ std::cout << "Cast " << stats.total_rays_cast << " rays, " 
+           << stats.total_hits << " hits" << std::endl;
+ ~~~~~~
+
+ \subsection CDConeQueries Cone-Based Spatial Queries
+
+ Find optimal paths through cones for directional obstacle avoidance:
+
+ ~~~~~~{.cpp}
+ // Basic optimal path detection
+ helios::vec3 apex = make_vec3(0, 0, 0);
+ helios::vec3 central_axis = make_vec3(0, 0, 1);
+ float half_angle = M_PI / 6.0f;  // 30 degrees
+ float height = 50.0f;            // Finite cone (0 = infinite)
+ int samples = 64;                // Number of sample directions
+ 
+ OptimalPathResult result = collision.findOptimalConePath(
+     apex, central_axis, half_angle, height, samples);
+
+ std::cout << "Optimal direction: " << result.direction << std::endl;
+ std::cout << "Collision count: " << result.collisionCount << std::endl;
+ std::cout << "Confidence: " << result.confidence << std::endl;
+
+ // Plant growth simulation example
+ helios::vec3 shoot_tip = make_vec3(0, 0, 0);
+ helios::vec3 growth_direction = make_vec3(0, 0, 1);
+ float perception_angle = M_PI / 4.0f;  // 45-degree perception
+ float segment_length = 1.0f;
+
+ auto path_result = collision.findOptimalConePath(shoot_tip, growth_direction, 
+                                                perception_angle, segment_length, 128);
+
+ // Grow in the optimal direction
+ helios::vec3 new_tip = shoot_tip + path_result.direction * segment_length;
+ ~~~~~~
+
+ \section CDExamples Example Applications
+
+ \subsection CDPlantGrowth Plant Growth Simulation
+
+ Complete plant growth simulation with collision avoidance:
+
+ ~~~~~~{.cpp}
+ CollisionDetection collision(&context);
+
+ // Growth simulation loop
+ helios::vec3 shoot_tip = make_vec3(0, 0, 1.5);
+ helios::vec3 preferred_direction = make_vec3(0, 0, 1);  // Upward growth
+
+ for( int growth_step = 0; growth_step < 100; ++growth_step ){
+     // Find optimal growth direction avoiding obstacles
+     float perception_angle = M_PI / 3.0f;  // 60-degree perception
+     float segment_length = 0.2f;
+     
+     auto path_result = collision.findOptimalConePath(
+         shoot_tip, preferred_direction, perception_angle, segment_length, 128);
+     
+     if( path_result.confidence > 0.7f ){  // High confidence path
+         // Grow in optimal direction
+         helios::vec3 new_tip = shoot_tip + path_result.direction * segment_length;
+         uint new_segment = context.addCylinder(shoot_tip, new_tip, 0.02f);
+         
+         shoot_tip = new_tip;
+         preferred_direction = path_result.direction;  // Update preferred direction
+         
+         std::cout << "Growth step " << growth_step << ": confidence " 
+                   << path_result.confidence << ", collisions " 
+                   << path_result.collisionCount << std::endl;
+     } else {
+         std::cout << "Growth blocked - stopping simulation" << std::endl;
+         break;
+     }
+ }
+ ~~~~~~
+
+ \subsection CDRayTracing LiDAR Simulation
+
+ Simulate realistic LiDAR scanning with ray tracing:
+
+ ~~~~~~{.cpp}
+ CollisionDetection collision(&context);
+ collision.enableGPUAcceleration();  // Use GPU for large ray batches
+
+ // Define LiDAR scan parameters
+ helios::vec3 scanner_position = make_vec3(0, 0, 10);
+ float scan_range = 50.0f;
+ int azimuth_samples = 360;    // 1-degree azimuth resolution
+ int elevation_samples = 180;  // 1-degree elevation resolution
+
+ // Generate ray queries
+ std::vector<RayQuery> lidar_rays;
+ lidar_rays.reserve(azimuth_samples * elevation_samples);
+
+ for( int az = 0; az < azimuth_samples; ++az ){
+     for( int el = 0; el < elevation_samples; ++el ){
+         float azimuth = 2.0f * M_PI * az / azimuth_samples;
+         float elevation = M_PI * (el - elevation_samples/2) / elevation_samples;
+         
+         helios::vec3 direction = make_vec3(
+             cos(elevation) * cos(azimuth),
+             cos(elevation) * sin(azimuth),
+             sin(elevation)
+         );
+         
+         lidar_rays.emplace_back(RayQuery{
+             scanner_position, direction, scan_range, {}
+         });
+     }
+ }
+
+ // Perform batch ray casting
+ RayTracingStats scan_stats;
+ std::vector<HitResult> scan_results = collision.castRays(lidar_rays, &scan_stats);
+
+ // Process scan data
+ std::vector<helios::vec3> point_cloud;
+ for( const auto& result : scan_results ){
+     if( result.hit ){
+         point_cloud.push_back(result.intersection_point);
+     }
+ }
+
+ std::cout << "LiDAR scan complete: " << point_cloud.size() << " points captured" << std::endl;
+ std::cout << "Hit rate: " << (float)scan_stats.total_hits / scan_stats.total_rays_cast << std::endl;
+ ~~~~~~
+
+ \section CDAdvanced Advanced Features
+
+ \subsection CDErrorHandling Error Handling
+
+ The CollisionDetection plugin follows Helios's fail-fast philosophy with comprehensive error handling:
+
+ ~~~~~~{.cpp}
+ try {
+     // All methods validate UUIDs and throw exceptions for invalid inputs
+     std::vector<uint> collisions = collision.findCollisions(invalid_UUID);
+ } catch( const helios_runtime_error& e ) {
+     std::cout << "Collision detection error: " << e.what() << std::endl;
+ }
+
+ // The plugin NEVER:
+ // - Returns fake values (0.0, empty lists, fake IDs)
+ // - Silently catches and ignores exceptions  
+ // - Continues with misleading fallback functionality
+ // Instead, it always raises explicit errors with clear, actionable messages
+ ~~~~~~
+
+ \subsection CDGPUControl GPU Acceleration Control
+
+ Control GPU acceleration and monitor system status:
+
+ ~~~~~~{.cpp}
+ // Check GPU acceleration status
+ if( collision.isGPUAccelerationEnabled() ){
+     std::cout << "GPU acceleration is active" << std::endl;
+ }
+
+ // Control GPU acceleration
+ collision.disableGPUAcceleration();  // Force CPU mode
+ collision.enableGPUAcceleration();   // Re-enable GPU (if available)
+
+ // Message control for debugging
+ collision.enableMessages();   // Show GPU/CPU usage messages (default)
+ collision.disableMessages();  // Suppress diagnostic output
+ ~~~~~~
+
+ \section CDTroubleshooting Troubleshooting
+
+ \subsection CDCommonIssues Common Issues and Solutions
+
+ **Issue**: Collision detection returns unexpected results
+ - **Solution**: The BVH is rebuilt automatically when geometry changes. If issues persist, try calling \ref CollisionDetection::rebuildBVH() manually
+
+ **Issue**: GPU acceleration not working or slower than expected
+ - **Solution**: Check CUDA installation, verify GPU memory availability, or disable GPU acceleration for small scenes (<100 primitives)
+ - **Diagnostics**: Enable messages to see "Using GPU/CPU traversal" output
+
+ **Issue**: Ray tracing produces no hits when geometry is present
+ - **Solution**: Ensure ray directions are normalized and max_distance is positive (or negative for infinite)
+ - **Validation**: Check \ref HitResult::hit field and verify ray parameters
+
+ \subsection CDPerformanceTips Performance Guidelines
+
+ For optimal performance:
+
+ 1. **Batch Operations**: Always prefer batch queries over individual queries
+ 2. **GPU Acceleration**: Use GPU for large scenes (>1000 primitives) and batch operations
+ 3. **Memory Management**: Monitor BVH memory usage and rebuild only when necessary
+ 4. **Distance Limits**: Use distance-limited queries to reduce computational overhead
+
+ ~~~~~~{.cpp}
+ // Good: Batch query multiple primitives
+ std::vector<uint> many_uuids = {UUID1, UUID2, UUID3};
+ auto batch_collisions = collision.findCollisions(many_uuids);
+
+ // Better: Use GPU acceleration for large batches
+ if( collision.isGPUAccelerationEnabled() && primitive_count > 1000 ){
+     auto results = collision.castRays(large_ray_batch, &stats);
+ }
+ ~~~~~~
+
+ \section slicing Primitive Slicing Operations
+
+ The CollisionDetection plugin provides primitive slicing capabilities for subdividing geometry along planar boundaries or regular grids. This functionality was integrated from the VoxelIntersection plugin and allows for precise spatial discretization of primitives.
+
+ \subsection slicing_single Single Primitive Slicing
+
+ Use \ref CollisionDetection::slicePrimitive() to slice a primitive along a planar face:
+
+ ~~~~~~{.cpp}
+ helios::WarningAggregator warnings;
+
+ // Define a slicing plane with at least 3 vertices
+ std::vector<vec3> plane_vertices = {
+     make_vec3(0, 0, 0),
+     make_vec3(1, 0, 0),
+     make_vec3(0, 1, 0)
+ };
+
+ // Slice the primitive - returns new triangle UUIDs
+ std::vector<uint> new_triangles = collisiondetection.slicePrimitive(uuid, plane_vertices, warnings);
+
+ // Check and display any warnings
+ warnings.report(std::cerr);
+ ~~~~~~
+
+ **Key features**:
+ - Preserves texture UV coordinates during slicing
+ - Handles both triangles (3 vertices) and patches (4 vertices)
+ - Validates area conservation
+ - Reports warnings for numerical issues
+
+ \subsection slicing_grid Grid-Based Slicing
+
+ Use \ref CollisionDetection::slicePrimitivesUsingGrid() to slice primitives along a regular 3D grid:
+
+ ~~~~~~{.cpp}
+ // Define grid parameters
+ vec3 grid_center = make_vec3(0, 0, 0);
+ vec3 grid_size = make_vec3(10, 10, 10);
+ int3 grid_divisions = make_int3(5, 5, 5);
+
+ // Slice all primitives in the vector
+ std::vector<uint> sliced_primitives = collisiondetection.slicePrimitivesUsingGrid(
+     primitive_uuids, grid_center, grid_size, grid_divisions
+ );
+
+ // Access results by grid cell
+ auto grid = collisiondetection.getGridCells();
+
+ // Iterate through all cells
+ for (int i = 0; i < grid.size(); i++) {
+     for (int j = 0; j < grid[i].size(); j++) {
+         for (int k = 0; k < grid[i][j].size(); k++) {
+             std::vector<uint> cell_primitives = grid[i][j][k];
+             // Process primitives in cell (i,j,k)
+             std::cout << "Cell [" << i << "," << j << "," << k << "] contains "
+                       << cell_primitives.size() << " primitives" << std::endl;
+         }
+     }
+ }
+
+ // Or access a specific cell directly
+ std::vector<uint> specific_cell = collisiondetection.getGridIntersections(2, 3, 1);
+ ~~~~~~
+
+ **Grid slicing creates**:
+ - New triangular primitives from sliced geometry
+ - "cell_ID" primitive data on each primitive (value = cell index, -1 if outside grid)
+ - Populated 4D grid_cells structure accessible via \ref CollisionDetection::getGridCells()
+
+ \subsection slicing_voxel Voxel-Primitive Intersection
+
+ Use \ref CollisionDetection::calculatePrimitiveVoxelIntersection() to determine which voxel primitives contain which planar primitives:
+
+ ~~~~~~{.cpp}
+ // Requires actual voxel primitives in the Context
+ // Tests which voxels contain the center point of each primitive
+ collisiondetection.calculatePrimitiveVoxelIntersection();
+
+ // Results stored as "inside_UUIDs" data on voxel primitives
+ for (uint voxel_uuid : voxel_primitives) {
+     if (context.doesPrimitiveDataExist(voxel_uuid, "inside_UUIDs")) {
+         std::vector<uint> inside_prims;
+         context.getPrimitiveData(voxel_uuid, "inside_UUIDs", inside_prims);
+         std::cout << "Voxel " << voxel_uuid << " contains "
+                   << inside_prims.size() << " primitives" << std::endl;
+     }
+ }
+ ~~~~~~
+
+ **Note**: This method uses OpenMP parallelization for CPU execution. The algorithm tests primitive centers against voxel bounding boxes using ray-box intersection.
+
+ \subsection slicing_grid_helper Grid Intersection Helper Method
+
+ For convenience, use \ref CollisionDetection::calculateGridIntersection() which combines slicing with grid population:
+
+ ~~~~~~{.cpp}
+ // Automatically slices primitives and populates grid_cells
+ collisiondetection.calculateGridIntersection(grid_center, grid_size, grid_divisions);
+
+ // Then access results
+ auto grid = collisiondetection.getGridCells();
+ ~~~~~~
+
+ \subsection migration_voxelintersection Migration from VoxelIntersection Plugin
+
+ If migrating code from the deprecated VoxelIntersection plugin:
+
+ **API Changes**:
+ - Replace `VoxelIntersection` class with `CollisionDetection`
+ - All method names remain the same (no API changes needed)
+ - `calculatePrimitiveVoxelIntersection()` now uses OpenMP instead of CUDA
+ - Method signatures use const references for vector parameters
+
+ **Example Migration**:
+ ~~~~~~{.cpp}
+ // Old VoxelIntersection code:
+ // VoxelIntersection voxelintersection(&context);
+ // voxelintersection.slicePrimitivesUsingGrid(uuids, center, size, divisions);
+
+ // New CollisionDetection code:
+ CollisionDetection collisiondetection(&context);
+ collisiondetection.slicePrimitivesUsingGrid(uuids, center, size, divisions);
+ ~~~~~~
+
+ **Performance Note**: The OpenMP implementation may have different performance characteristics compared to the GPU version. If performance is critical for large datasets, benchmark and consider future GPU optimization.
+
+*/

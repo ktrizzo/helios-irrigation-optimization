@@ -1,0 +1,1332 @@
+/*! \page "RadiationDoc" Radiation Model Plugin Documentation
+
+ \image html GreenhouseImage.png
+
+ \tableofcontents
+
+ <p> <br><br> </p>
+
+ <table>
+   <tr>
+      <th>Dependencies</th>
+      <td>Vulkan loader library (macOS/Linux only; no external dependencies on Windows) and/or NVIDIA CUDA 12.0+ with driver ≥ 560 (enables OptiX 8.1 backend); NVIDIA CUDA 9.0+ with driver &lt; 560 (enables OptiX 6.5 backend)</td>
+   </tr>
+   <tr>	
+     <th>CMakeLists.txt</th>
+     <td>set( PLUGINS "radiation" )</td>
+   </tr>
+   <tr>	
+     <th>Header File</th>
+     <td>#include "RadiationModel.h"</td>
+   </tr>
+   <tr>	
+     <th>Class</th>
+     <td>\ref RadiationModel</td>
+   </tr>
+ </table>
+
+\section RadDepends Dependencies
+
+The radiation model requires at least one ray-tracing backend. Two backends are available:
+
+<table>
+    <tr>
+        <th>Backend</th>
+        <th>Package</th>
+        <th>\image html apple-logo.png</th>
+        <th>\image html unix-logo.png</th>
+        <th>\image html windows-logo.png</th>
+    </tr>
+    <tr>
+        <td><b>Vulkan</b> (all platforms)</td>
+        <td>Vulkan loader library</td>
+        <td><tt>brew install vulkan-loader molten-vk</tt></td>
+        <td><tt>sudo apt-get install libvulkan-dev</tt></td>
+        <td>No additional packages required (Vulkan headers, glslang shader compiler, and import library are all bundled with Helios)</td>
+    </tr>
+    <tr>
+        <td><b>OptiX 8.1</b> (NVIDIA driver ≥ 560, default)</td>
+        <td>NVIDIA CUDA 12.0+</td>
+        <td>Not available (no NVIDIA GPU)</td>
+        <td>Use <a href="https://developer.nvidia.com/cuda-downloads">CUDA installer</a></td>
+        <td>Use <a href="https://developer.nvidia.com/cuda-downloads">CUDA installer</a></td>
+    </tr>
+    <tr>
+        <td><b>OptiX 6.5</b> (NVIDIA driver &lt; 560, legacy)</td>
+        <td>NVIDIA CUDA 9.0+</td>
+        <td>Not available (no NVIDIA GPU)</td>
+        <td>Use <a href="https://developer.nvidia.com/cuda-downloads">CUDA installer</a></td>
+        <td>Use <a href="https://developer.nvidia.com/cuda-downloads">CUDA installer</a></td>
+    </tr>
+</table>
+
+CMake automatically detects which backends are available and enables them. On NVIDIA systems with driver ≥ 560 and CUDA 12.0+, the OptiX 8.1 backend is selected by default; on systems with driver &lt; 560 and CUDA 9.0+, the OptiX 6.5 (legacy) backend is used instead. On systems without NVIDIA hardware or when CUDA is not installed, the Vulkan backend is used. You can force the Vulkan backend by setting <tt>-DFORCE_VULKAN_BACKEND=ON</tt>, or force the OptiX 6.5 legacy backend by setting <tt>-DOPTIX_VERSION_LEGACY=ON</tt>.
+
+\note <b>Performance:</b> The OptiX backend is strongly preferred on NVIDIA systems. For direct radiation source ray traces, performance between the two backends is broadly comparable. However, for diffuse radiation or scattering ray traces, the Vulkan backend can be significantly slower. If you have an NVIDIA GPU and are running simulations with diffuse radiation or multiple scattering iterations, it is strongly recommended to install CUDA and use the OptiX backend. On systems with driver ≥ 560, the OptiX 8.1 backend will be selected automatically.
+
+For help choosing the correct CUDA toolkit version and accompanying OptiX version for your system, consult this page: \ref ChoosingCUDA
+
+Useful OS-specific information for installing CUDA can be found here: \ref DependentSoftware
+
+If you are using a PC with the OptiX backend, it is likely you will need to increase the GPU timeout in the registry, otherwise calculations lasting longer than 2 secs. will timeout and kill your program. A guide on how to increase the timeout can be found here: \ref PCGPUTimeout
+
+ \section RadKnownIssues Known Issues
+
+ \subsection VulkanInstanceLimitation Vulkan Backend: Repeated RadiationModel Creation Limitation (Linux NVIDIA Drivers)
+
+ <b>Issue:</b> On Linux systems with NVIDIA GPUs (driver versions 465+), creating and destroying more than approximately 25-30 RadiationModel instances within a single process will cause the Vulkan backend to fail with <tt>VK_ERROR_INCOMPATIBLE_DRIVER</tt>.
+
+ <b>Root Cause:</b> This is a long-standing NVIDIA Linux driver limitation where repeated Vulkan instance creation/destruction cycles exhaust internal driver resources. This issue has been present since driver version 465 (2021) and remains unfixed as of driver version 550+ (2025). The limitation appears to be intentional rather than a bug that will be fixed.
+
+ <b>Workaround:</b> <b>Reuse a single RadiationModel instance</b> across multiple simulation runs instead of creating/destroying instances in a loop:
+
+ ~~~~~~{.cpp}
+ // INCORRECT - Will fail after ~25 iterations with Vulkan backend:
+ for (auto& scenario : scenarios) {
+     RadiationModel model(&context);
+     model.runBand("PAR");
+ }
+
+ // CORRECT - Reuse the same instance:
+ RadiationModel model(&context);
+ for (auto& scenario : scenarios) {
+     context.loadXML(scenario.geometry);
+     model.updateGeometry();  // Update backend with new geometry
+     model.runBand("PAR");
+ }
+ ~~~~~~
+
+ <b>Note:</b> This limitation only affects the Vulkan backend on Linux NVIDIA systems. The OptiX backend is unaffected. Reusing RadiationModel instances is recommended practice regardless, as it avoids repeated GPU resource allocation overhead.
+
+ <b>References:</b>
+ - <a href="https://forums.developer.nvidia.com/t/issue-with-repeated-instance-creation-in-one-process/176978">NVIDIA Developer Forums: Instance Creation Issue</a>
+ - <a href="https://github.com/qdrant/qdrant/pull/6031">Qdrant's Workaround (2024)</a>
+ - <a href="https://github.com/Igalia/vkrunner/issues/7">VkRunner's Workaround (2019)</a>
+
+ \section RadIntro Introduction
+
+ This model simulates the transport of radiative energy for arbitrary wavelength bands using a GPU-accelerated ray-tracing model. The model details are described in <a href="http://dx.doi.org/10.1016/j.ecolmodel.2017.11.022">Bailey (2018)</a>. Briefly, the model uses a reverse ray-tracing approach to simulate emission from primitive elements, collimated radiation sources, and point radiation sources.
+
+ The model supports three GPU backends: the <b>Vulkan compute backend</b>, which works on all platforms (macOS, Linux, Windows) including systems without NVIDIA hardware; the <b>OptiX 8.1 backend</b>, which is the default on NVIDIA systems with driver ≥ 560 and CUDA 12.0+; and the <b>OptiX 6.5 backend</b>, which is used on NVIDIA systems with driver &lt; 560. The appropriate backend is selected automatically at build time based on the available hardware and driver version.
+
+ \section RadConstructor RadiationModel Class Constructor
+
+ <table>
+   <tr>	
+      <th>Constructors</th>
+   </tr>
+   <tr>	
+     <td>\ref RadiationModel( helios::Context* context )</td>
+   </tr>
+ </table>
+
+ The \ref RadiationModel class is initialized by simply passing a pointer to the Helios context as an argument to the constructor. This gives the class the ability to automatically query model geometry and read/write from/to model data.
+
+ \section RadVarsAndProps Input/Output Primitive Data
+
+ \subsection RadInputData Input Primitive Data
+
+ <table>
+   <tr>	
+     <th>Primitive Data</th>
+     <th>Units</th>
+     <th>Data Type</th>
+     <th>Description</th>
+     <th>Available Plug-ins</th>
+     <th>Default Value</th>
+   </tr>
+   <tr>
+     <td>temperature</td>
+     <td>Kelvin</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+     <td>Primitive surface temperature. <b>NOTE: Only needed if performing emission calculations.</b></td>
+     <td>Can be computed by \ref EnergyBalanceModel plug-in</td>
+     <td>300 K</td>
+   </tr>
+   <tr>
+     <td>reflectivity\_*</td>
+     <td>unitless</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+     <td>Primitive reflectivity for band * (i.e., reflectivity for band 'PAR' would be 'reflectivity_PAR').</td>
+     <td>N/A</td>
+     <td>0</td>
+   </tr>
+   <tr>
+     <td>transmissivity\_*</td>
+     <td>unitless</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+     <td>Primitive transmissivity for band * (i.e., transmissivity for band 'PAR' would be 'transmissivity_PAR').</td>
+     <td>N/A</td>
+     <td>0</td>
+   </tr>
+   <tr>
+     <td>emissivity\_*</td>
+     <td>unitless</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+     <td>Primitive emissivity for band * (i.e., emissivity for band 'PAR' would be 'emissivity_PAR'). <b>NOTE: Only needed if performing emission calculations.</b></td>
+     <td>N/A</td>
+     <td>1.0</td>
+   </tr>
+   <tr>
+     <td>twosided\_flag</td>
+     <td>N/A</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">uint</span>\endhtmlonly</td>
+     <td>Flag to determine whether a primitive should be treated as two-sided (=1) or single-sided (=0). See Sect. \ref RadTwoSided below for more information.</td>
+     <td>N/A</td>
+     <td>1</td>
+   </tr>
+   <tr>
+     <td>specular\_exponent</td>
+     <td>N/A</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+     <td>Value controlling the spread of specular reflection distribution in simulated camera images.</td>
+     <td>N/A</td>
+     <td>-1 (specular reflection disabled)</td>
+   </tr>
+   <tr>
+     <td>specular\_scale</td>
+     <td>N/A</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+     <td>Value that scales the strength of specular reflection in simulated camera images.</td>
+     <td>N/A</td>
+     <td>1.0</td>
+   </tr>
+ </table>	
+ 
+ \subsection RadOutputData Output Primitive Data
+ 
+ <table>
+   <tr>	
+     <th>Primitive Data</th>
+     <th>Units</th>
+     <th>Data Type</th>
+     <th>Description</th>
+   </tr>
+   <tr>	
+     <td>radiation\_flux\_*</td>
+     <td>W/m<sup>2</sup></td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+     <td>Absorbed radiation flux for band * (i.e., the flux for band 'PAR' would be 'radiation_flux_PAR').</td>
+   </tr>
+ </table>
+
+ \section RadUse Using the Radiation Model Plug-In
+
+ \subsection RadConst Model Class Constructor
+
+ The radiation model class contains functions and data associated with the model. To begin, declare an instance of the RadiationModel class. The class constructor takes one argument - a pointer to the Helios context. It uses this pointer to access model geometry and data in the context.
+
+ ~~~~~~{.cpp}
+ RadiationModel radiationmodel(&context); //declare the model class
+ ~~~~~~
+
+ \subsection RadTwoSided Area Basis for Calculating Fluxes
+
+ The ultimate outputs of the radiation model are absorbed radiative fluxes, which is the rate of radiative energy transfer per unit surface area. <b>All flux calculations are on a per unit one-sided surface area basis.</b> For planar primitive elements (patches and triangles), this means that the flux will be the rate of radiative energy absorption on both sides of the primitive, divided by the one-sided surface area of the primitive (i.e., that returned by the \ref helios::Context::getPrimitiveArea(uint) const function).
+
+ By default, a planar primitive will emit and absorb radiation from/to both faces. For primitives that only emit and absorb from/to one face (e.g., ground primitives), this default behavior should be modified. Single-sided emission can be achieved by setting primitive data for the particular primitive with a name of "twosided_flag" to a value of 0 (where '0' is defined as an unsigned integer):
+
+  ~~~~~~{.cpp}
+  context.setPrimitiveData( UUID, "twosided_flag", uint(1) );
+  ~~~~~~
+
+ Note that in this case radiation will be emitted from the side with its face in the direction of the primitive normal vector. If primitive data called "twosided_flag" is set to 1, this will produce the default behavior of emission from both faces.
+
+  A primitive with "twosided_flag" set to 0 will not absorb any radiation from the back face of the primitive, but it will attenuate radiation. So if a ray hits the back face, the ray trajectory will be terminated, but no energy will be deposited.
+
+  Example: If we had a single patch and a diffuse radiation source with a flux of 1.0, with default behavior the absorbed flux on the patch would be 2.0 because it would absorb energy from both faces, but the end flux would be expressed on a single-sided area basis. If "twosided_flag" was set to 0 for that patch (non-default behavior), then the absorbed flux on the patch would be 1.0.
+
+ <b>Material-based Configuration (Recommended)</b>
+
+ The twosided_flag can also be set at the material level using Context::setMaterialTwosidedFlag(). When a primitive has a user-assigned material, the material's twosided_flag setting takes precedence over primitive data. This allows configuring sidedness once on a material and having it automatically apply to all primitives using that material:
+
+  ~~~~~~{.cpp}
+  context.addMaterial("ground_material");
+  context.setMaterialTwosidedFlag("ground_material", 0);  // One-sided
+  context.assignMaterialToPrimitive(ground_UUIDs, "ground_material");
+  ~~~~~~
+
+ If no user-assigned material exists (or the material is auto-generated), the radiation model falls back to checking for "twosided_flag" primitive data.
+
+ \subsection RadBands Defining Wavelength Bands
+
+ The end output of the radiation model is absorbed radiative fluxes for primitives or camera pixels for one or more wavelength bands. Radiative bands are defined by the total radiative fluxes emitted by any radiative sources, surface radiative properties integrated over the band (reflectivity, transmissivity, and emissivity). These source fluxes and surface radiative properties can be manually specified for each band, or can be automatically calculated based on spectral data input to the model.
+
+ Each wavelength band is given a label that is defined by the user (e.g., 'PAR').  Each band has the possibility of having components of direct, diffuse, and emission, each of which are specified when adding the band.
+
+ Radiation bands are defined in the model by calling the \ref RadiationModel::addRadiationBand() method. At a minimum, the user must provide an arbitrary label for the band to be added (e.g., "PAR"), which will be used to reference it later. The actual value of the label does not matter - calling a band "PAR" for example doesn't mean anything itself, it's just a label.
+
+ ~~~~~~{.cpp}
+ radiationmodel.addRadiationBand( "PAR" ); //Add band 'PAR'
+ ~~~~~~
+
+ When a band is added in this way, we will need to manually specify source fluxes and surface radiative properties. These values are what would actually make the band "PAR", or "NIR", or "shortwave", for example. We would set source fluxes and radiative properties consistent with that particular band.
+
+ If we have source flux spectral data, or surface spectral radiative properties, we can input this into the model and have it automatically calculate source fluxes and radiative properties. The procedure for actually inputting this spectral data is described in detail below, but in this case we need to specify the wavelength range for our band when we create it:
+
+ ~~~~~~{.cpp}
+ radiationmodel.addRadiationBand( "PAR", 400, 700 ); //Add band 'PAR', defined as 400-700nm
+ ~~~~~~
+
+ In the example above, we have defined our wavelength band as 400-700 nm. Thus, any spectral data input to the model will be integrated over this wavelength band to determine source fluxes and radiative properties.
+
+ \subsection InputSpectra Input Spectral Data
+
+ Spectral data is comprised of data value pairs - a wavelength value paired with a response value (e.g., spectral flux, reflectivity, transmissivity). These wavelength-value pairs are represented using the \ref helios::vec2 structure. Raw spectral data is stored as global data in the Helios Context as a vector of vec2's. The label of the global data can then be assigned to radiative sources or primitive data in order to map the spectral data to a given source or primitive.
+
+ Spectral data is usually read into the Context from an XML file, although it could be manually created within a program and stored as global data. The spectral data should be stored in an XML file as global data, consisting of many vec2 data point and a label string. An example might be as follows (although it will typically have many more values in a real use case). See the page on \ref IO "File I/O" for more information about the specification of XML files in Helios.
+
+ ~~~~~~{.xml}
+ <helios>
+    <label="leaf_transmissivity">
+        300.0 0.11880
+        400.0 0.10533
+        500.0 0.09013
+        600.0 0.08810
+    <globaldata_vec2>
+ <helios>
+ ~~~~~~
+
+ In this example, we've specified the leaf spectral transmissivity at four wavebands - 300, 400, 500, and 600 nm. Note that wavelength values are always given in nanometers. The label "leaf_transmissivity" is important, as this would be used later to assign this transmissivity spectrum to one or more primitives.
+
+ The Helios radiation model has some pre-defined spectra in several XML files. These files are automatically resolved by the asset management system regardless of where the executable is run. The files "leaf_surface_spectral_library.xml", "soil_surface_spectral_library.xml", etc. have many surface reflectivity and/or transmissivity spectra; the file "light_spectral_library.xml" has several artificial light spectral flux spectra; the file "solar_spectrum_ASTMG173.xml" has the ASTM standard clear sky solar spectrum.
+
+ In order to get the spectral data into the Context as global data, the XML file containing the data must be loaded. This is done via the usual procedure:
+
+ ~~~~~~{.cpp}
+ context.loadXML("plugins/radiation/spectral_data/leaf_surface_spectral_library.xml");
+ ~~~~~~
+
+ This command would load all the leaf surface spectra from the file "leaf_surface_spectral_library.xml" into the Context as global data. We could then access it in the usual way (see page on \ref GlobalData "Global Data" for details on Helios global data):
+
+ ~~~~~~{.cpp}
+ std::vector<vec2> transmissivity;
+ context.getGlobalData("grape_leaf_transmissivity_0000", transmissivity);
+ float wavelength = transmissivity.at(0).x;
+ float tau = transmissivity.at(0).y;
+ ~~~~~~
+
+ In the above example, we've retrieved the spectrum in the file "leaf_surface_spectral_library.xml" with the tag "grape_leaf_transmissivity_0000" and stored it into the vector "transmissivity". As an example, we looked up the wavelength and transmissivity at the first wavelength (index of 0).
+
+
+ \subsection RadProps Radiative Properties
+
+ Radiative properties (reflectivity, transmissivity, emissivity) are defined for each band for each primitive.  Their reflectivity or transmissivity values can be set directly via primitive data, or they can be calculated from spectral data. The emissivity is always a constant and cannot be set from spectral data.
+
+ 1\. Setting reflectivity and transmissivity manually to a constant value for each band and primitive
+
+ By setting the value of primitive data "reflectivity_[*]" or "transmissivity_[*]", where "[*]" is the name of a radiative band that has been created, this sets a constant reflectivity or transmissivity value for the given band and primitive. And example is given below.
+
+ ~~~~~~{.cpp}
+  // Initialize the Context
+  Context context;
+
+  // Add 'Patch' primitive
+  uint UUID = context.addPatch();
+
+  float rho = 0.1; //reflectivity value
+  context.setPrimitiveData( UUID, "reflectivity_PAR", rho);
+
+  float tau = 0.1; //transmissivity value
+  context.setPrimitiveData( UUID, "transmissivity_PAR", tau);
+ ~~~~~~
+
+ Note that absorptivity is not directly set, rather it is calculated as \f$1-\rho-\tau\f$.  If \f$1-\rho-\tau\f$ is calculated to be negative or greater than 1, an error is thrown.
+
+ If reflectivity or transmissivity primitive data does not exist for a primitive, a default value of 0 is assumed. If radiative properties are changed from default values, the number of scattering iterations needs to be increased from the default value of 0 (see \ref RadScatter). If radiative properties are changed, but the number of scattering iterations is set to the default value of 0, the modified radiative property values are overridden and set back to their default values (black surface).
+
+ 2\. Specifying reflectivity and transmissivity based on spectral data
+
+ Spectral reflectivity or transmissivity data can be associated with a primitive, such that the radiative properties for a given band can be calculated automatically. At a minimum, two things must be set in order for this to happen: a) the radiation band must have been created with a defined wavelength range (see above and method \ref RadiationModel::addRadiationBand( const std::string&, float, float) "RadiationModel::addRadiationBand()"); b) primitive data with label "reflectivity_spectrum" and/or "transmissivity_spectrum" must be set for the primitive, and the value (a string) must reference a valid spectral dataset that has been loaded into the Context.
+
+ Below is a code example for specifying the reflectivity and transmissivity for a primitive based on spectral data. In this case, the model will assume the source spectral distribution is constant over all wave bands, and thus total reflectivity/transmissivity is just the integral of the spectral reflectivity/transmissivity. If there was a radiative source with a specified spectral distribution, the total reflectivity/transmissivity would be calculated by integrating the product of the reflectivity/transmissivity and source spectral intensity (example given for reflectivity only):
+
+ \f[ \rho = \dfrac{\int_{\lambda_{min}}^{\lambda_{max}}\rho_\lambda I_\lambda d\lambda}{\int_{\lambda_{min}}^{\lambda_{max}} I_\lambda d\lambda}\f]
+
+ ~~~~~~{.cpp}
+  // Initialize the Context
+  Context context;
+
+  // Add 'Patch' primitive
+  uint UUID = context.addPatch();
+
+  // Load the surface spectral library
+  context.loadXML("plugins/radiation/spectral_data/leaf_surface_spectral_library.xml");
+
+  // Set the reflectivity and transmissivity based on an example spectrum in the library
+  context.setPrimitiveData( UUID, "reflectivity_spectrum", "grape_leaf_reflectivity_0000" );
+  context.setPrimitiveData( UUID, "transmissivity_spectrum", "grape_leaf_transmissivity_0000" );
+
+  // Declare the radiation model
+  RadiationModel radiationmodel(&context);
+
+  // Add a band with explicit wavelength bounds (400-700nm)
+  radiationmodel.addRadiationBand( "PAR", 400, 700 );
+
+  // Updating the geometry will perform radiative property calculations and set primitive data
+  radiationmodel.updateGeometry();
+ ~~~~~~
+
+ Note that in the above example, we did not add a radiative source or set its spectral distribution.
+
+ \subsection RadEmission Radiative Emission
+
+ By default, radiation emission calculations are performed for each band.  Each primitive emits radiation with a flux of \f$\varepsilon \sigma T^4\f$, where \f$\varepsilon\f$ is the primitive's emissivity, \f$\sigma=5.67\times 10^{-8}\,W/m^2/K^4\f$ is the Steffan Boltzmann constant, and \f$T\f$ is the primitive's surface temperature in Kelvin.  By default, it is assumed that \f$\varepsilon=1\f$, unless primitive data exists that defines the emissivity.  By default, it is also assumed that \f$T=300K\f$, unless the primitive data 'temperature' exists in the Context whose value defines the temperature.
+
+ Emission can be disabled for the band by calling the \ref RadiationModel::disableEmission() "disableEmission()" function.  For example, for the photosynthetically active (PAR) band, terrestrial objects do not emit radiation (i.e., \f$\varepsilon\approx 0\f$) and thus rather than setting a zero emissivity for this band for all primitives, it is desirable to simply disable radiation emission for this band:
+
+ ~~~~~~{.cpp}
+ radiationmodel.disableEmission( "PAR" ); //Disable emission for the 'PAR' band
+ ~~~~~~
+
+ The surface emissivity can be changed similarly as was shown above for the reflectivity and transmissivity:
+
+ ~~~~~~{.cpp}
+ float eps = 0.9; //emissivity value
+ context.setPrimitiveData( UUID, "emissivity_LW", eps);
+ ~~~~~~
+
+ Note that you can also set the reflectivity and transmissivity for a band with emission. It is required that \f$\rho+\tau+\varepsilon=1\f$ in order to satisfy conservation of energy. If only the emissivity is set and reflectivity and transmissivity are left at their default values of 0, it is automatically assumed that \f$\rho=1-\varepsilon\f$ and \f$\tau=0\f$.
+
+ \subsection RadSources External Radiation Sources
+
+ There are six types of external sources of radiation that can be simulated: 1) a collimated radiation source (beams of radiation are approximately parallel), 2) a sphere with the same radius and distance as the sun, 3) a sphere with prescribed radius and position, 4) a disk with prescribed radius, position, and orientation, 5) a rectangle with prescribed size, position, and orientation, 6) ambient diffuse radiation with prescribed angular distribution.
+
+ <b>It is critical to note that radiative source fluxes are specified as the flux perpendicular to the direction of the source.</b> For a solar source, for example, this would be the flux on a plane perpendicular to the sun direction. This flux is of course different from what a sensor positioned horizontally would measure. One can convert between the two using the cosine of the solar zenith, but this becomes problematic when the sun is low in the sky. For this reason, it is recommended to use the SolarPosition plug-in to specify solar source fluxes, which can be matched to observations by tuning the atmospheric turbidity.
+
+ \image html RadiationSources.png
+
+ \subsubsection ColSource Adding Collimated Sources
+
+ A collimated radiation source is defined by a unit vector pointing in the direction of the collimated source, and by the radiation flux emitted by the source normal to the direction of radiation propagation.
+ 
+ The radiation model also requires the specification of the number of rays per primitive to be used in the simulation (default is 100 rays per primitive).  The more rays used in the simulation the more accurate the answer will be, but this will result in a longer simulation time.
+
+ Below is an example of adding a collimated source oriented in the direction of the sun, with a flux of 800 and using 200 rays per primitive:
+
+ ~~~~~~{.cpp}
+ vec3 sun_dir(0,0,1);
+ uint SunSource = radiationmodel.addCollimatedRadiationSource( sun_dir ); //add the source, whose identifier is stored in the 'SunSource' variable
+ radiationmodel.setSourceFlux(SunSource,"PAR",800); //set the flux of the source
+ radiationmodel.setDirectRayCount("PAR",200); //set the ray count for sources
+ ~~~~~~
+
+ The \ref RadiationModel::addCollimatedRadiationSource() method can also be called with no argument, in which case it will set the sun direction to be vertical. It can also be called based on a \ref helios::SphericalCoord.
+
+ \subsubsection SunSphereSource Adding Spherical Sun Source
+
+ To represent penumbral effects, a spherical radiation source can be used to represent the sun. The sun is represented by a sphere, which has the same diameter and distance from the earth as the sun.
+
+ The spherical sun source is defined in a similar manner as the collimated radiation source, but using the \ref RadiationModel::addSunSphereRadiationSource() "addSunSphereRadiationSource()" function. Below is an example of adding a spherical sun source, with a flux of 800:
+
+ ~~~~~~{.cpp}
+ vec3 sun_dir(0,0,1);
+ uint SunSource = radiationmodel.addSunSphereRadiationSource( sun_dir ); //add the source, whose identifier is stored in the 'SunSource' variable
+ radiationmodel.setSourceFlux(SunSource,"PAR",800); //set the flux of the source
+ ~~~~~~
+
+ \subsubsection PointSource Adding Spherical Radiation Sources
+
+ Spherical sources are added using the \ref RadiationModel::addSphereRadiationSource() "addSphereRadiationSource()" function, which takes an (x,y,z) location of the spherical source and its radius as arguments. This function returns a uint which specifies the identifier for the point source, similar to a collimated and sun sphere source. The flux emanating from the surface of the source can also be set using the source identifier.
+
+ ~~~~~~{.cpp}
+ vec3 sun_dir(0,0,1);
+ float sphere_radius = 1.0;
+ uint SphereSource = radiationmodel.addSphereRadiationSource( sun_dir, sphere_radius ); //add the source, whose identifier is stored in the 'SphereSource' variable
+ radiationmodel.setSourceFlux(SphereSource,"PAR",800); //set the flux of the source
+ ~~~~~~
+
+ \subsubsection DiskSource Adding Disk Radiation Sources
+
+ A disk radiation source emits directionally from one surface of a circular disk. Disk sources are added using the \ref RadiationModel::addDiskRadiationSource() "addDiskRadiationSource()" function, which takes an (x,y,z) location of the disk source center, its radius, and its rotation as arguments. By default, the disk is horizontal and emits from its upper face. The rotation argument specifies the rotation angle in radians about its x-, y-, and z-axes. For example, to have a downward-emitting disk, the rotation would be (\f$\pi\f$, 0, 0).  The flux emanating from the surface of the disk can also be set using the source identifier.
+
+ ~~~~~~{.cpp}
+ vec3 rotation(M_PI,0,0); //emitting downward
+ float disk_radius = 1.0;
+ uint DiskSource = radiationmodel.addDiskRadiationSource( nullorigin, disk_radius, rotation );
+ radiationmodel.setSourceFlux(DiskSource,"PAR",800); //set the flux of the source
+ ~~~~~~
+
+ \subsubsection RectSource Adding Rectangular Radiation Sources
+
+ Adding a rectangular radiation source is nearly the same as adding a disk source, except that the horizontal and lateral dimensions of the source can be specified independently. As with the disk source, the rectangle is horizontal by default and emits from its upper face.
+
+ ~~~~~~{.cpp}
+ vec3 rotation(M_PI,0,0); //emitting downward
+ vec2 size(2.0, 1.0);
+ uint RectSource = radiationmodel.addRectangleRadiationSource( nullorigin, size, rotation );
+ radiationmodel.setSourceFlux(RectSource,"PAR",800); //set the flux of the source
+ ~~~~~~
+
+ \subsubsection SourceDist Setting the Radiation Source Spectral Distribution and Normalization
+
+ In the above examples, the source flux was specified directly for each band, and integrated surface radiative properties assumed the source flux spectral distribution was constant over the wave band. Optionally, users can specify a source spectral distribution by referencing a spectral distribution that has been loaded into the Context based on the procedure described above (\ref RadProps).
+
+ The \ref RadiationModel::setSourceSpectrum() method sets the source spectral flux distribution, and takes two arguments: 1) The identifier of a radiative source (i.e., the output argument of the add[*]Source() call), 2) The label (string) of a spectral distribution that has been loaded into the Context.
+
+ The main difference between the spectral distribution data for radiative properties and for sources is that for sources each ".y" value in the spectral dataset is the spectral-hemispherical emitted flux at that wavelength (".x") in units of W/m<sup>2</sup>/nm.
+
+ An example of setting the source distribution based on the ASTMG173 standard solar spectral distribution is given below. Note that the ASTMG173 solar spectrum is automatically loaded by the radiation model. However, in general, the user needs to load an XML file containing the spectral data into the Context. For example,
+
+ ~~~~~~{.cpp}
+ context.loadXML("plugins/radiationmodel/spectral_data/light_spectral_library.xml");
+ ~~~~~~
+
+ This would allow for use of the "CREE_XLamp_XHP70p2_6500K" source flux spectral distribution, for example.
+
+ It is important to note that if a spectral flux distribution is specified for a source, the total flux emitted by the source for a given waveband will be calculated by integrating the source flux distribution over that band (provided a wavelength range was specified when calling the \ref RadiationModel::addRadiationBand() function):
+
+ \f[R = \int\limits_{\lambda_{min}}^{\lambda_{max}} R_\lambda d\lambda \f]
+
+ However, users typically want to change the integral of the source flux distribution dynamically throughout a simulation. This can be done using the \ref RadiationModel::setSourceSpectrumIntegral() method. The user can either set the integral of the source flux spectral distribution across all wavelengths to a prescribed value. The source flux spectral distribution can also be scaled based on a prescribed integral between two wavelengths. For example, if only the total PAR flux was known, the entire solar source flux distribution could be scaled based on the integral from 400-700nm. When called, the \ref RadiationModel::setSourceSpectrumIntegral() function properly normalizes the source spectral distribution, calculates radiative source fluxes for all bands through integration, then calls the \ref RadiationModel::setSourceFlux() method for all bands based on the updated fluxes.
+
+ ~~~~~~{.cpp}
+ uint SourceID = radiationmodel.addSunSphereRadiationSource(); //add a radiation source
+ radiationmodel.setSourceSpectrum(SourceID, "solar_spectrum_direct_ASTMG173"); //set the source flux spectral distribution to ASTMG173 solar spectrum
+ radiationmodel.addRadiationBand("PAR", 400, 700); //add a radiation band called "PAR" defined between 400-700nm
+ radiationmodel.setSourceSpectrumIntegral(SourceID, 1000 ); //set the integral of solar flux spectrum across all bands to 1000 W/m^2
+ ~~~~~~
+
+ In order to be able to set the source spectrum integral, it is required that: 1) the source has been assigned a spectral distribution via the \ref RadiationModel::setSourceSpectrum() method, and 2) bands should have been added with explicit wavelength bounds. If they were not, their fluxes will not be set based on the updated source flux integral.
+
+ A user may want to set the source integral based on only a subset of wavelengths contained in the entire spectrum. For example, if only the PAR (400-700nm) flux was known, the entire source flux distribution could be normalized to produce a given PAR flux.
+
+ ~~~~~~{.cpp}
+ uint SourceID = radiationmodel.addSunSphereRadiationSource(); //add a radiation source
+ radiationmodel.setSourceSpectrum(SourceID, "solar_spectrum_direct_ASTMG173"); //set the source flux spectral distribution to ASTMG173 solar spectrum (direct)
+ radiationmodel.addRadiationBand("PAR", 400, 700); //add a radiation band called "PAR" defined between 400-700nm
+ radiationmodel.setSourceSpectrumIntegral(SourceID, 300, 400, 700 ); //set the integral of solar flux spectrum from 400-700nm to 300 W/m^2
+ ~~~~~~
+
+ Now that the source spectrum is set, it is no longer necessary to call \ref RadiationModel::setSourceFlux(), because it will be automatically calculated by integrating the source spectrum. If \ref RadiationModel::setSourceFlux() is called for a band, it will override any source spectra.
+
+ \subsubsection AmbSource Adding Diffuse/Ambient Sources
+
+ An ambient radiation source is added simply by setting its flux value:
+
+ ~~~~~~{.cpp}
+ radiationmodel.setDiffuseRadiationFlux("PAR",200.f); //set the flux
+ ~~~~~~
+
+ Alternatively, diffuse flux can be computed automatically from a spectral distribution by setting the diffuse spectrum:
+
+ ~~~~~~{.cpp}
+ radiationmodel.setDiffuseSpectrum("solar_spectrum_ASTMG173"); //set diffuse spectrum for all bands
+ ~~~~~~
+
+ This applies the spectrum to all existing radiation bands. For each band, the diffuse flux is computed by integrating the spectrum over the band's wavelength range. If \ref RadiationModel::setDiffuseRadiationFlux() is called for a band, it will override the spectrum-based flux.
+
+ \note For emission-enabled bands (thermal/longwave bands), spectra are not relevant since these bands use thermal emission rather than incoming solar radiation. For such bands, \ref RadiationModel::getDiffuseFlux() returns 0 unless a manual flux is set via \ref RadiationModel::setDiffuseRadiationFlux().
+
+ The default is to use 100 diffuse rays per primitive, which can be set to a user-defined value using the following command:
+
+ ~~~~~~{.cpp}
+ radiationmodel.setDiffuseRayCount("PAR",200); //set the number of rays
+ ~~~~~~
+
+ By default, the diffuse radiation distribution is isotropic. An anisotropic diffuse radiation distribution can be utilized using the function \ref RadiationModel::setDiffuseRadiationExtinctionCoeff() "setDiffuseRadiationExtinctionCoeff()". This function applies an anisotropic diffuse distribution in which intensity declines exponentially away from the peak direction (usually the solar direction). The relative diffuse intensity is given by <a href="https://doi.org/10.1016/0038-092X(88)90072-2">(Harrison and Coombes, 1988)</a>
+
+ \f[ f_d(\theta,\phi) = f_0\Psi^{-K},\f]
+
+ where 
+
+ \f[ \Psi = \mathrm{acos}\left( \mathrm{cos}\,\theta\,\mathrm{cos}\,\theta_s + \mathrm{sin}\,\theta\,\mathrm{sin}\,\theta_s\,\mathrm{cos}\,(\phi-\phi_s) \right), \f]
+
+ and \f$\theta_s\f$ and \f$\phi_s\f$ are the zenith and azimuth angles of the peak direction. If \f$\Psi<1^\circ\f$, \f$\Psi\f$ is clamped to a value of 1 degree. The \f$f_0\f$ is a normalization factor that is computed such that the integral of \f$f_d\f$ for a one-sided horizontal element is equal to 1, i.e.,
+
+\f[ \frac{1}{\pi}\int\limits_0^{2\pi}\int\limits_0^{\pi/2}\,f_d\,\mathrm{cos}\,\theta\,\mathrm{sin}\,\theta\,d\theta d\phi = 1. \f]
+
+ The figure below shows the diffuse distribution for different values of \f$K\f$ for a solar zenith of 45 degrees. Note that a value of \f$K=0\f$ yields an anisotropic distribution, and as \f$K\f$ gets large the distribution becomes increasingly anisotropic.
+
+ \image html diffuse_distribution.png
+
+ An example implementation is given below.
+
+ ~~~~~~{.cpp}
+ vec3 sun_dir(0,0,1); //sun direction
+ float K = 0.1; //diffuse radiation distribution extinction coefficient
+ radiation.setDiffuseRadiationExtinctionCoeff("PAR", K, sun_dir);
+ ~~~~~~
+
+ \subsection RadScatter Scattering Iterations
+ 
+ If the reflectivity or transmissivity are set to values greater than 0, scattering calculations are required to simulate the reflected or transmitted radiation transport.  These scattering calculations are performed iteratively until there is no energy left to be scattered.  The number of scattering iterations is defined using:
+ 
+ ~~~~~~{.cpp}
+ radiationmodel.setScatteringDepth( "PAR", 3); //set the number of scattering iterations
+ ~~~~~~
+
+ \subsection RadPeriodic Periodic Boundary Conditions
+
+ By default, the radiation model does not enforce any boundary conditions on the edge of the domain (other than being a diffuse ambient radiation source if one has been added). Optionally, users can specify to enforce a periodic boundary in the horizontal in either the x- or y-direction or both. This effectively means that the domain repeats indefinitely, and that any radiation leaving the domain on one boundary will re-enter the domain on the opposite boundary. This is useful for eliminating domain edge effects.
+
+ \image html PeriodicBC.png
+
+ A periodic boundary condition is specified using the \ref RadiationModel::enforcePeriodicBoundary() "enforcePeriodicBoundary()" function. The argument to this function is the lateral boundary that should be considered periodic: one of "x" (periodic in x-direction), "y" (periodic in y-direction), or "xy" (periodic in both x- and y-directions).
+
+ ~~~~~~{.cpp}
+ radiationmodel.enforcePeriodicBoundary("xy"); //enforce periodic boundaries in horizontal
+ ~~~~~~
+
+ Note that it is very important that no primitives extend laterally beyond the ground surface, otherwise the periodic boundary will lie beyond the lateral extent of the ground and there will potentially be ambient radiation that enters the domain from below. If there is a chance that primitives may laterally extend beyond the ground, it is recommended to use the \ref helios::Context::cropDomain() function to crop the domain in the horizontal to the size of the ground.
+
+ ~~~~~~{.cpp}
+ vec2 ground_size(10,10);  //lateral size of the ground
+ vec3 ground_center(0,0,0);  //position of the ground center
+ context.addPatch( ground_center, ground_size );  //ground patch
+
+ context.cropDomainX( ground_center.x + make_vec2(-0.5*ground_size.x,0.5*ground_size.x) );
+ context.cropDomainY( ground_center.y + make_vec2(-0.5*ground_size.y,0.5*ground_size.y) );
+ ~~~~~~
+
+ \subsection RadCam Radiation Cameras
+
+ Simulated cameras can be added to the domain in order to measure radiative fluxes and produce simulated images (with annotations if desired).
+
+ \subsubsection RadCamAdd Adding a Radiation Camera
+
+ A radiation camera is defined by the properties given in the two tables below. The first set of parameters gives the camera's extrinsic properties that determine where the camera is located, how it is oriented, and how it numerically samples the domain.
+
+ <table>
+   <tr>
+     <th>Parameter</th>
+     <th>Data Type</th>
+     <th>Description</th>
+   </tr>
+   <tr>
+     <td>camera_position</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">vec3</span>\endhtmlonly</td>
+     <td>Cartesian (x,y,z) position of the center of the camera lens.</td>
+   </tr>
+   <tr>
+     <td>camera_lookat</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">vec3</span>\endhtmlonly</td>
+     <td>Cartesian (x,y,z) position that the camera is looking directly at (i.e., a line perpendicular to the lens will pass through camera_position and camera_lookat).</td>
+   </tr>
+   <tr>
+     <td>antialiasing_samples</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">uint</span>\endhtmlonly</td>
+     <td>Number of ray samples launched per camera pixel.</td>
+   </tr>
+ </table>
+
+ The set of parameters given in the table below define a camera's intrinsic parameters that determines how it captures images. Each of these values are member variables of a parameters structure called \ref CameraProperties.
+
+ <table>
+   <tr>
+     <td>lens_diameter</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+     <td>Physical diameter of the camera lens.</td>
+   </tr>
+   <tr>
+     <td>focal_plane_distance</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+     <td>Distance from the camera lens to the focal plane (at this distance from the camera, all objects will be in focus).</td>
+   </tr>
+   <tr>
+     <td>HFOV</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+     <td>Angle of the horizontal camera field of view in degrees.</td>
+   </tr>
+   <tr>
+      <td>FOV_aspect_ratio</td>
+      <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+      <td><b>DEPRECATED:</b> This parameter is automatically calculated from camera_resolution to ensure square pixels. The value is set to FOV_aspect_ratio = horizontal_resolution / vertical_resolution. Explicitly setting this parameter will trigger a warning and the value will be ignored.</td>
+   </tr>
+   <tr>
+     <td>camera_resolution</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">int2</span>\endhtmlonly</td>
+     <td>Number of camera pixels in the horizontal and vertical directions.</td>
+   </tr>
+ </table>
+
+ The last thing to define before adding a camera is which radiation bands the camera will detect. This is specified via a vector of strings, with each element corresponding to the label for a radiation band that has been added from the \ref RadiationModel::addRadiationBand() method. Note that if a camera band was never added, an error will be thrown. Each camera band will correspond to a channel of the camera image.
+
+ Once all these parameters have been defined, we can add a camera to the simulation using the \ref RadiationModel::addRadiationCamera() method. The first argument to this method is an arbitrary label string (e.g., "thermal", "multispec", "mycamera") that will later be used to reference the camera. Example code is given below.
+
+ ~~~~~~{.cpp}
+ CameraProperties properties; //define the camera properties structure
+ properties.HFOV = 45;  //change some properties if we want
+
+ vec3 camera_position(0,0,3);
+ vec3 camera_lookat(0,0,0);
+ uint antialiasing_samples = 100;
+
+ radiationmodel.addRadiationCamera("visible", {"red","green","blue"}, camera_position, camera_lookat, properties, antialiasing_samples );
+ ~~~~~~
+
+ This will add a 3-band RGB camera, and assumes that radiation bands with labels "red", "green", and "blue" have been added based on a call to \ref RadiationModel::addRadiationBand().
+
+ \subsubsection RadCamLibrary Adding a Camera from the Camera Library
+
+ For convenience, a library of real-world cameras with pre-configured intrinsic parameters and spectral response data is provided. This allows you to quickly set up cameras with realistic properties without manually specifying all camera parameters.
+
+ The camera library is located at <tt>plugins/radiation/camera_library/camera_library.xml</tt> and currently includes the following cameras:
+
+ <table>
+   <tr>
+     <th>Camera Label</th>
+     <th>Manufacturer</th>
+     <th>Model</th>
+     <th>Sensor Width</th>
+     <th>Resolution</th>
+     <th>Focal Length</th>
+     <th>Lens Diameter</th>
+   </tr>
+   <tr>
+     <td>Canon_20D</td>
+     <td>Canon</td>
+     <td>EOS 20D</td>
+     <td>22.5 mm</td>
+     <td>3504 x 2236</td>
+     <td>31.0 mm</td>
+     <td>6.9 mm</td>
+   </tr>
+   <tr>
+     <td>Nikon_D700</td>
+     <td>Nikon</td>
+     <td>D700</td>
+     <td>36.0 mm</td>
+     <td>3008 x 2000</td>
+     <td>50.0 mm</td>
+     <td>27.8 mm</td>
+   </tr>
+   <tr>
+     <td>Nikon_D50</td>
+     <td>Nikon</td>
+     <td>D50</td>
+     <td>23.7 mm</td>
+     <td>3008 x 2000</td>
+     <td>33.9 mm</td>
+     <td>7.53 mm</td>
+   </tr>
+   <tr>
+     <td>iPhone11</td>
+     <td>Apple</td>
+     <td>iPhone 11</td>
+     <td>4.29 mm</td>
+     <td>3024 x 4032</td>
+     <td>4.25 mm</td>
+     <td>2.36 mm</td>
+   </tr>
+   <tr>
+     <td>iPhone12ProMAX</td>
+     <td>Apple</td>
+     <td>iPhone 12 Pro Max</td>
+     <td>5.1 mm</td>
+     <td>3024 x 4032</td>
+     <td>5.1 mm</td>
+     <td>3.19 mm</td>
+   </tr>
+   <tr>
+     <td>Basler_acA2500-20gc</td>
+     <td>Basler</td>
+     <td>acA2500-20gc</td>
+     <td>12.44 mm</td>
+     <td>2592 x 2048</td>
+     <td>12.0 mm</td>
+     <td>8.57 mm</td>
+   </tr>
+   <tr>
+     <td>Basler_acA2500-20gm</td>
+     <td>Basler</td>
+     <td>acA2500-20gm</td>
+     <td>12.44 mm</td>
+     <td>2592 x 2048</td>
+     <td>12.0 mm</td>
+     <td>8.57 mm</td>
+   </tr>
+   <tr>
+     <td>Basler_acA2500-20gm_730nm</td>
+     <td>Basler</td>
+     <td>acA2500-20gm + 730nm filter</td>
+     <td>12.44 mm</td>
+     <td>2592 x 2048</td>
+     <td>12.0 mm</td>
+     <td>8.57 mm</td>
+   </tr>
+   <tr>
+     <td>Basler_acA2500-20gm_850nm</td>
+     <td>Basler</td>
+     <td>acA2500-20gm + 850nm filter</td>
+     <td>12.44 mm</td>
+     <td>2592 x 2048</td>
+     <td>12.0 mm</td>
+     <td>8.57 mm</td>
+   </tr>
+ </table>
+
+ \note Sensor height is automatically calculated from sensor width and resolution to ensure square pixels: <tt>sensor_height = sensor_width × (resolution_height / resolution_width)</tt>.
+
+ Each camera in the library includes manufacturer-measured spectral response curves for red, green, and blue channels. The spectral response data sources are documented in the XML file comments.
+
+ To add a camera from the library, use the \ref RadiationModel::addRadiationCameraFromLibrary() method:
+
+ ~~~~~~{.cpp}
+ vec3 camera_position(0,0,3);
+ vec3 camera_lookat(0,0,0);
+ uint antialiasing_samples = 100;
+
+ // Add an iPhone 11 camera from the library
+ radiationmodel.addRadiationCameraFromLibrary("myiphone", "iPhone11", camera_position, camera_lookat, antialiasing_samples);
+ ~~~~~~
+
+ This method automatically:
+ - Loads all intrinsic camera parameters (sensor dimensions, resolution, field of view, focal length, lens diameter)
+ - Creates radiation bands for red, green, and blue channels if they don't already exist
+ - Sets the spectral response for each band based on the manufacturer's measured data
+ - Stores the spectral response data in global data with labels like <tt>iPhone11_red</tt>, <tt>iPhone11_green</tt>, <tt>iPhone11_blue</tt>
+
+ \paragraph RadCamLibraryCustomBands Custom Band Names
+
+ You can also specify custom band names when loading a camera from the library. This is useful when you want to use different band names than the default "red", "green", "blue" labels defined in the XML file:
+
+ ~~~~~~{.cpp}
+ // Use custom band names instead of default "red", "green", "blue"
+ std::vector<std::string> custom_bands = {"R", "G", "B"};
+ radiationmodel.addRadiationCameraFromLibrary("myiphone", "iPhone11", camera_position, camera_lookat, antialiasing_samples, custom_bands);
+ ~~~~~~
+
+ The custom band names are mapped to the spectral responses in the order they appear in the camera library XML file. For example, if the XML defines spectral responses in order "red", "green", "blue" and you provide <tt>custom_bands = {"R", "G", "B"}</tt>, then "R" will use the "red" spectral response, "G" will use "green", and "B" will use "blue".
+
+ The number of custom band names must exactly match the number of spectral responses defined in the camera library entry. If the sizes don't match, an error will be raised.
+
+ \note When using custom band names, the global data storing spectral response curves still uses the XML labels (e.g., <tt>iPhone11_red</tt>). Only the band names used for radiation model operations are customized.
+
+ If the radiation bands (red, green, blue) don't exist when loading a camera from the library, they will be automatically created with:
+ - Wavelength ranges determined from the spectral response data (typically 400-720 nm)
+ - Emission disabled (cameras measure, not emit radiation)
+ - Scattering depth set to 3
+
+ A warning message will be printed if bands are auto-created.
+
+ \note The working distance (focal plane distance) for cameras loaded from the library is set to a default value of 2.0 meters. This is the distance at which objects will be in focus.
+
+ \subsubsection RadCamSpecular Radiation Camera Specular Reflection
+
+ Specular reflection causes a surface to look "shiny". Waxy leaves or polished objects have high specular reflection, causing glancing light angles to appear very bright. Specular reflection is modeled using a Blinn-Phong-style approach, which provides a simple approximation to Fresnel reflection at the air-material interface.
+
+ Physically, specular reflection occurs at the surface interface before light penetrates the material. For dielectric materials like leaves and plastics, the specular highlight reflects the color of the incident light source (typically white for sunlight), not the material's diffuse color. This is why shiny leaves have white highlights rather than green ones.
+
+ Specular reflection effects can be included in simulated images by setting the value of the primitive data "specular_exponent" and/or "specular_scale" for each primitive. By default, if this primitive data is not set for any primitives specular reflection will be disabled entirely. Furthermore, if the specular exponent is set to a negative value for a given primitive, or the primitive data "specular_exponent" does not exist for a given primitive, specular reflection will be disabled for that primitive. Specular reflection is supported for all radiation source types (collimated, sunsphere, sphere, disk, and rectangle).
+
+ The strength of specular reflection is calculated according to the following equation:
+
+ \f[
+    I_{spec} = I_{s} \, k_s \, \mathrm{max}\left(0, \vec{n}_{spec} \cdot \vec{n}_p \right)^k\left(\frac{k+2}{2\pi}\right),
+ \f]
+
+ where \f$I_{spec}\f$ is the specular flux contribution, \f$I_s\f$ is the incident flux from the radiation source, \f$k_s\f$ is the specular scaling coefficient, \f$\vec{n}_p\f$ is the surface normal, \f$\vec{n}_s\f$ is the source direction, \f$\vec{n}_{ray}\f$ is the ray direction, and \f$k\f$ is the specular exponent. \f$\vec{n}_{spec}\f$ is the specular reflection direction, which is calculated as:
+
+ \f[
+    \vec{n}_{spec} = \frac{\vec{n}_s - \vec{n}_{ray}}{|| \vec{n}_s + \vec{n}_{ray} ||}.
+ \f]
+
+ By default, \f$k_s\f$ is set to 1.0. The primitive data "specular_exponent" must be set in order to enable specular reflection (if it is not set, the value of primitive data "specular_scale" will be ignored).
+
+ The figure below shows the effect of different specular exponents on the simulated camera image (\f$k_s = 1\f$ for all images).
+
+ \image html specular_exponent_comparison.png
+
+ \subsubsection RadCamCalibColor Radiation Camera Color Calibration
+
+ By default, it is assumed that the spectral sensitivity is 100\% across all wavelengths. This is not the case for any real camera, as sensitivity of the sensor usually varies greatly with wavelength as shown in the image below. We need to set the spectral response of each camera channel. This can be done using the \ref RadiationModel::setCameraSpectralResponse() method. Three arguments must be provided: 1) the label for the camera to be set (first argument to the camera adder method), 2) the label for the camera channel (e.g., "red", "PAR", etc.), and 3) the label for global data in the Context containing spectral response data. The 3rd point is similar to how spectral data is specified for sources and radiative properties - a vector of wavelength and intensity values.
+
+ \image html CameraSpectralResponse.png
+
+ Inputting raw measured surface spectra and camera spectral response specified by the manufacturer will typically result in simulated camera images that look quite different from those of the real camera due to errors in measurements, internal camera corrections, and lens effects. As such, a calibration is generally needed to achieve acceptable image results.
+
+ Pre-calibrated camera responses are available for a few cameras and light source combinations to use when direct calibration data is not available. These are for a Nikon B500 camera with the ASTMG173 solar spectrum or CREE 6500K LED. These calibrated camera spectra can be found in the included camera spectral library ("plugins/radiation/spectral_data/camera_spectral_library.xml") and has labels "calibrated_sun_NikonB500_spectral_response_[*]" or "calibrated_CREE6500K_NikonD700_spectral_response_[*]", where [*] is one of "red", "green", or "blue". These calibrated camera spectra can be used in place of the raw camera spectral response data, as illustrated below:
+
+ By convention, the intensity spectra all sources other than the sun are normalized to 1.0. So when using camera calibrations based on these types of sources, you should set the source fluxes for each radiative band equal to 1.0. For solar sources, set the source flux for each band equal to the total solar flux integrated over all wavelengths.
+
+ ~~~~~~{.cpp}
+ Context context;
+ context.loadXML("plugins/radiation/spectral_data/camera_spectral_library.xml");
+
+ // Assuming radiation model and camera have already been set up here //
+
+ radiationmodel.setCameraSpectralResponse("visible", "red", "calibrated_ASTMG173_NikonD700_spectral_response_red");
+ radiationmodel.setCameraSpectralResponse("visible", "green", "calibrated_ASTMG173_NikonD700_spectral_response_green");
+ radiationmodel.setCameraSpectralResponse("visible", "blue", "calibrated_ASTMG173_NikonD700_spectral_response_blue");
+ ~~~~~~
+
+ When using a calibrated camera spectral response, you should set the source flux equal to 1.0 for all bands. This is because the calibrated camera spectral response is calibrated based on the actual intensity of the light source.
+
+ Ideally, a camera calibration should be performed for the particular camera and lighting conditions of your scene. The color calibration is performed using real images taken of a DKK Color Calibration Chart (<a href="https://www.bhphotovideo.com/c/product/1014557-REG/dgk_color_tools_dkk_set_of_2_dkk_poly_bag_2.html">DGK Color Tools</a>). Steps for calibration are as follows:
+
+ 1\. Collect one or more images of the color calibration card using the desired camera. It is best to use lighting conditions similar to what will be simulated using the radiation model.
+
+ 2\. Extract normalized (0-1) pixel values for each channel of the camera image, and for each color patch on the color calibration card. Currently, this is a manual process, and can be done using a variety of approaches such as using the <a href="https://www.youtube.com/watch?v=MQqntlvhGLg">built-in color picker on Mac</a>, or the <a href="https://learn.microsoft.com/en-us/windows/powertoys/color-picker">color picker on PC</a>. These utilities typically give 8-bit color values between 0 and 255, and thus you should divide the resulting color values by 255 to normalize them. It is best to increase the averaging size (or aperture) of the color picker to as large as possible such that it will still fit inside a single square in the color card image. Values should be specified as a 2D vector, where the first index is the channel of the image, and the second index is a vector of 18 elements giving the normalized color value for each color patch on the board for that channel following the pattern shown in the image below. The code for entering the patch values is also given below.
+
+ \image html color_card_values.png
+
+
+ ~~~~~~{.cpp}
+ std::vector<std::vector<float>> truevalues(3);
+ // red channel
+ truevalues.at(0) = {1.0, 0.69, 0.58, 0.47, 0.35, 0.0, 0.85, 0.99, 0.50, 0.30, 0.02, 0.85, 0.63, 0.77, 0.24, 0.69, 0.76, 0.69};
+ // green channel
+ truevalues.at(1) = {1.0, 0.71, 0.59, 0.47, 0.35, 0.0, 0.22, 0.95, 0.73, 0.67, 0.10, 0.18, 0.24, 0.51, 0.53, 0.36, 0.63, 0.58};
+ // blue channel
+ truevalues.at(2) = {1.0, 0.71, 0.60, 0.48, 0.36, 0.0, 0.20, 0.31, 0.35, 0.91, 0.31, 0.54, 0.24, 0.24, 0.63, 0.57, 0.56, 0.50};
+ ~~~~~~
+
+ It is preferable to use more significant digits for the color values for increased precision. The above example used only two significant digits for simplicity.
+
+ 3\. Set up the scene in Helios based on the geometry, radiative conditions, and camera(s) that will be present in the simulations. You must specify the spectral distribution of any radiation sources using \ref RadiationModel::setSourceSpectrum(), and specify an initial guess for the camera channel spectral distribution(s) using \ref RadiationModel::setCameraSpectralResponse().
+
+ 4\. Add a simulated color calibration board to the scene. You can add the default color board (DGK Color Tools DKK Color Calibration Chart) using the method ef CameraCalibration::addDefaultColorboard(), or a custom color board ef CameraCalibration::addColorboard().
+
+ \subsubsection RadCamMetadata Exporting Camera Metadata
+
+ The radiation model can automatically export JSON metadata files alongside camera images. This metadata includes camera properties (resolution, focal length, aperture, sensor dimensions), geographic location, acquisition time/date, and lighting conditions. This is useful for documentation, machine learning applications, and archival purposes.
+
+ \paragraph RadCamMetadataStruct Camera Metadata Structure
+
+ Camera metadata is stored in the \ref CameraMetadata struct, which contains three nested structures:
+
+ - <b>camera_properties</b>: Intrinsic camera parameters including image resolution, number of channels, optical focal length (mm), aperture (f-stop), and physical sensor dimensions (mm)
+ - <b>location_properties</b>: Geographic coordinates (latitude/longitude in degrees)
+ - <b>acquisition_properties</b>: Capture information including date (YYYY-MM-DD), time (HH:MM:SS), UTC offset, camera height above ground (meters), camera tilt angle from horizontal (degrees), and light source type ("sunlight", "artificial", "mixed", or "none")
+ - <b>image_processing</b>: (optional) Any applied image corrections including saturation, brightness, contrast adjustments and gamma compression flag
+
+ \paragraph RadCamMetadataAuto Auto-populating Metadata
+
+ The easiest way to populate camera metadata is to use the \ref RadiationModel::populateCameraMetadata() method, which automatically fills all fields from the camera parameters and simulation context:
+
+ ~~~~~~{.cpp}
+ // Assume camera has already been added with label "RGB_camera"
+ CameraMetadata metadata;
+ radiationmodel.populateCameraMetadata("RGB_camera", metadata);
+
+ // Set the metadata for this camera
+ radiationmodel.setCameraMetadata("RGB_camera", metadata);
+ ~~~~~~
+
+ The auto-population calculates:
+ - <b>Optical focal length</b>: Derived from sensor width and horizontal field of view using \f$f = \frac{w}{2 \tan(\theta/2)}\f$, where \f$w\f$ is sensor width and \f$\theta\f$ is HFOV
+ - <b>Sensor dimensions</b>: Sensor width is specified via the \ref CameraProperties::sensor_width_mm parameter (default 35mm), and sensor height is calculated as \f$h = w / \mathrm{aspect\_ratio}\f$
+ - <b>Aperture (f-stop)</b>: Calculated from focal length and lens diameter as \f$N = f / D\f$, formatted as "f/X.X". For pinhole cameras (lens_diameter = 0), aperture is set to "pinhole"
+ - <b>Camera tilt angle</b>: Angle from horizontal computed from the camera viewing direction, where 0° is horizontal, 90° is pointing straight down, and -90° is pointing straight up
+ - <b>Light source type</b>: Automatically detected based on radiation sources:
+   - "sunlight" if only collimated or sun sphere sources are present
+   - "artificial" if only sphere, rectangle, or disk sources are present
+   - "mixed" if both natural and artificial sources are present
+   - "none" if no sources are present
+ - <b>Location and date/time</b>: Retrieved from the simulation Context
+
+ \paragraph RadCamMetadataManual Manual Metadata Population
+
+ You can also manually populate metadata fields if you want to override auto-calculated values or provide custom information:
+
+ ~~~~~~{.cpp}
+ CameraMetadata metadata;
+
+ // Manually set camera properties
+ metadata.camera_properties.width = 1024;
+ metadata.camera_properties.height = 1024;
+ metadata.camera_properties.channels = 3;
+ metadata.camera_properties.focal_length = 50.0f;  // mm
+ metadata.camera_properties.aperture = "f/2.8";
+ metadata.camera_properties.sensor_width = 36.0f;  // mm (full-frame)
+ metadata.camera_properties.sensor_height = 24.0f; // mm
+
+ // Set location
+ metadata.location_properties.latitude = 34.0522f;
+ metadata.location_properties.longitude = -118.2437f;
+
+ // Set acquisition properties
+ metadata.acquisition_properties.date = "2025-09-30";
+ metadata.acquisition_properties.time = "14:30:00";
+ metadata.acquisition_properties.UTC_offset = 8.0f;
+ metadata.acquisition_properties.camera_height_m = 50.0f;
+ metadata.acquisition_properties.camera_angle_deg = 15.0f;
+ metadata.acquisition_properties.light_source = "sunlight";
+
+ radiationmodel.setCameraMetadata("RGB_camera", metadata);
+ ~~~~~~
+
+ \paragraph RadCamMetadataExport Automatic JSON Export
+
+ Once metadata has been set for a camera using \ref RadiationModel::setCameraMetadata(), a JSON metadata file will be automatically written whenever \ref RadiationModel::writeCameraImage() is called for that camera. The JSON file will have the same base name as the image but with a .json extension.
+
+ ~~~~~~{.cpp}
+ // After running simulation...
+ std::string image_path = radiationmodel.writeCameraImage("RGB_camera", {"red","green","blue"}, "scene");
+ // This writes both "RGB_camera_scene.jpeg" and "RGB_camera_scene.json"
+ ~~~~~~
+
+ The JSON file follows this structure:
+
+ ~~~~~~{.json}
+ {
+   "path": "RGB_camera_scene.jpeg",
+   "camera_properties": {
+     "height": 1024,
+     "width": 1024,
+     "channels": 3,
+     "focal_length": 28.5,
+     "aperture": "f/2.8",
+     "sensor_width": 35.0,
+     "sensor_height": 35.0,
+     "model": "generic"
+   },
+   "location_properties": {
+     "latitude": 34.0522,
+     "longitude": -118.2437
+   },
+   "acquisition_properties": {
+     "date": "2025-09-30",
+     "time": "14:30:00",
+     "UTC_offset": 8.0,
+     "camera_height_m": 50.0,
+     "camera_angle_deg": 15.0,
+     "light_source": "sunlight"
+   },
+   "image_processing": {
+     "saturation_adjustment": 1.5,
+     "brightness_adjustment": 1.2,
+     "contrast_adjustment": 1.1,
+     "color_space": "sRGB"
+   }
+ }
+ ~~~~~~
+
+ \paragraph RadCamMetadataSensor Sensor Width Parameter
+
+ The physical sensor width can be specified when defining camera properties using the \ref CameraProperties::sensor_width_mm parameter (default is 35mm for full-frame):
+
+ ~~~~~~{.cpp}
+ CameraProperties properties;
+ properties.camera_resolution = make_int2(1920, 1280);  // 3:2 aspect ratio
+ properties.sensor_width_mm = 24.0f;  // APS-C sensor size
+ properties.HFOV = 45.0f;
+ // FOV_aspect_ratio is automatically calculated from camera_resolution (1920/1280 = 1.5)
+ properties.model = "Canon EOS 70D";  // Optional camera model name
+
+ radiationmodel.addRadiationCamera("APS-C_camera", {"red","green","blue"},
+                                   camera_position, camera_lookat,
+                                   properties, antialiasing_samples);
+ ~~~~~~
+
+ This sensor width is used to calculate the optical focal length when metadata is auto-populated. Common sensor sizes include:
+ - Full-frame: 36mm × 24mm (sensor_width_mm = 36.0)
+ - APS-C: 24mm × 16mm (sensor_width_mm = 24.0)
+ - Micro Four Thirds: 17.3mm × 13mm (sensor_width_mm = 17.3)
+
+ \paragraph RadCamMetadataModel Camera Model Name
+
+ The camera model name can be specified using the \ref CameraProperties::model parameter (default is "generic"). This is useful for documentation and distinguishing between different camera types in your simulation:
+
+ ~~~~~~{.cpp}
+ CameraProperties properties;
+ properties.model = "Nikon D700";
+ // ... other properties ...
+ ~~~~~~
+
+ The model name will be automatically included in the exported JSON metadata.
+
+ \subsection RadRun Running Simulations
+
+ Before simulations are run, we must update the context geometry within the radiation model using the \ref RadiationModel::updateGeometry() "updateGeometry()" command.  The geometry update can be somewhat costly, so it should only be done whenever geometry changes.
+
+ Simulations for each band are run separately via the \ref RadiationModel::runBand() "runBand()" command:
+
+ ~~~~~~{.cpp}
+ radiationmodel.updateGeometry(); //build the context geometry in the radiation model
+
+ radiationmodel.runBand("PAR"); //run the model for the 'PAR' band
+ ~~~~~~
+
+ The model will create several primitive data in the context with values set using simulation results (see Sect. "Output Primitive Data" above).
+
+ \subsection RadSolar Integrating with the SolarPosition Plug-in
+
+ A common task when using the radiation model is to integrate with the \ref SolarPosition plug-in to set the position of a collimated radiation source (i.e., the sun), potentially at several different times of the day.  In this case, one would initialize the SolarPosition and RadiationModel classes and set up relevant inputs, then execute a for-loop over each time of the day. For each time iteration, the current time is set in the Context, the direction of the sun is calculated for that particular time, then the sun direction is passed to the radiation model. An example is illustrated in the code below.
+
+ ~~~~~~{.cpp}
+  #include "Visualizer.h"
+  #include "SolarPosition.h"
+  #include "RadiationModel.h"
+
+  using namespace helios;
+
+  int main(){
+
+     //---- inputs ----//
+     int UTC = 7;             //hours from UTC
+     float latitude = 35.2;   //latitude in degrees
+     float longitude = 124.3; //longitude in degrees
+     Date date(1,6,2018);     //current date (June 1 2018)
+  
+     float pressure = 101300; //atmospheric pressure (Pa)
+     float temperature = 300; //air temperature (K)
+     float humidity = 0.5;    //relative humidity (-)
+     float turbidity = 0.05;  //atmospheric turbidity coeff (-)
+     //----------------//
+
+     // --- 1. Initialize the Context and some geometry --- //
+     Context context; //Initialize Context
+
+     // add some geometry
+     context.addTile( make_vec3(0,0,0), make_vec2(10,10), make_SphericalCoord(0,0), make_int2(500,500) );
+
+     context.addSphere( 50, make_vec3(0,0,2), 1 );
+
+     // --- 2. Initialize the solar position model --- //
+
+     SolarPosition solarposition( UTC, latitude, longitude, &context ); //initialize the solar position model
+
+     // --- 3. Initialize the radiation model --- //
+  
+     RadiationModel radiationmodel( &context ); //initialize the radiation model
+  
+     uint SunSource = radiationmodel.addCollimatedRadiationSource(); //add the source (sun), we'll set it's direction later
+  
+     radiationmodel.addRadiationBand("SW");
+     radiationmodel.setDirectRayCount("SW",1000); //set the ray count for source
+     radiationmodel.disableEmission("SW");
+  
+     radiationmodel.updateGeometry();
+
+     // --- 4. Loop over various hours of the day (7:00 thru 21:00) --- //
+  
+     context.setDate( date ); //set the date, which will not change
+     
+     for( int hour=7; hour<22; hour++ ){
+
+        // --- 5. Set the current time and calculate the associated sun direction --- //
+    
+        context.setTime(0,hour); //set the current time for this iteration
+
+        //Set the correct sun position for the current date, time, latitude, etc.
+        vec3 sdir = solarposition.getSunDirectionVector(); //get the solar direction from plug-in
+        radiationmodel.setSourcePosition( SunSource, sdir ); //set the radiation source direction in radiation model
+
+        // --- 6. Calculate incoming solar fluxes for the current time --- //
+      
+        //Calculate the clear-sky direct and diffuse solar flux for the current date, time, latitude, etc.
+        float Rflux = solarposition.getSolarFlux( pressure, temperature, humidity, turbidity );
+        float fdiff = solarposition.getDiffuseFraction( pressure, temperature, humidity, turbidity ); //fraction of Rflux that is diffuse
+        radiationmodel.setSourceFlux( SunSource, "SW", Rflux*(1-fdiff) ); //set the direct flux: Rflux*(1-fdiff)
+        radiationmodel.setDiffuseRadiationFlux( "SW", Rflux*fdiff ); //set the diffuse flux: Rflux*fdiff
+
+        // --- 7. Run the model --- //
+        radiationmodel.runBand("SW");
+
+        // --- 8. Visualize the result --- //
+    
+        Visualizer vis(1000); //Initialize the visualizer
+
+        vis.buildContextGeometry(&context); //add all geometry in the Context to the visualizer
+        vis.colorContextPrimitivesByData( "radiation_flux_SW" ); //tell the visualizer to color based on radiation flux (primitive data)
+
+        vis.plotUpdate(); //plot the result
+
+        vis.printWindow(); //print to JPEG image
+
+        helios::wait(3); //wait for 3 seconds
+
+        vis.closeWindow(); //close the window, then continue to next loop iteration
+
+     }//end loop over time
+
+     return 0;     
+     
+  }
+ ~~~~~~
+
+ \subsection ModelOutputs Model Outputs
+ 
+ \subsubsection RadVis Visualizing Model Outputs using the Visualizer Plug-In
+ 
+ Visualization of radiation model outputs is typically achieved by coloring primitives based on the value of the primitive data "radiation_flux_*" for a particular band.  However, we could visualize any input or output of the model or calculated value based on the model outputs.
+
+ A simple example of visualization of the absorbed flux for band "PAR" is given below, which assumes that a band exists named "PAR" and the model was run for that band.
+
+ ~~~~~~{.cpp}
+  Visualizer vis(1000);
+
+  vis.buildContextGeometry( &context );
+  vis.colorContextPrimitivesByData("radiation_flux_PAR");
+  vis.enableColorbar();
+
+  vis.plotInteractive();
+ ~~~~~~
+
+ It could also be possible to visualize the net all-wave radiation flux by summing multiple band fluxes. The following example assumes that there are bands created in the model for shortwave radiation called "SW" and for longwave radiation called "LW", and that the model has been run for each of these bands.
+
+ ~~~~~~{.cpp}
+  Visualizer vis(1000);
+
+  vis.buildContextGeometry( &context );
+
+  // sum the "SW" and "LW" fluxes for each primitive and store the result to new primitive data called "total_flux"
+  context.aggregatePrimitiveDataSum( allUUIDs, {"radiation_flux_SW", "radiation_flux_LW"}, "total_flux" );
+	   
+  vis.colorContextPrimitivesByData( "total_flux" );
+  vis.enableColorbar();
+
+  vis.plotInteractive();
+ ~~~~~~
+
+ \subsubsection RadDataInt Integrating Fluxes
+
+ While visualizations provide an overview of the spatial distribution of radiative fluxes, the ultimate goal of radiation simulations is usually to integrate over some region in order to calculate aggregate fluxes and related quantities. There are many examples of such integration, such as calculating the fraction of incoming radiation intercepted by the canopy, or calculating the overall fraction of sunlit leaf area.
+
+ There are many functions in the Context to help with aggregating primitive data, which can be utilized to easily calculate these integral quantities. The code below gives an example of calculating the total canopy and ground radiation absorption, and the associated fraction of radiation interception. To calculate the total radiation absorption for the canopy or ground, we can separately sum the product of the primitive absorbed flux and surface area. This would give the total rate of radiation absorption (in Watts) for the canopy and the ground. The Context method \ref helios::Context::calculatePrimitiveDataAreaWeightedSum() can do this calculation for us, given a vector of UUIDs corresponding to leaf or ground primitives. This is illustrated below.
+
+ ~~~~~~{.cpp}
+  // *** Run the model and calculate PAR interception *** //
+
+  radiation.runBand("PAR"); //run the radiation calculations for this band
+
+  // Calculate PAR interception
+  float PAR_tree;
+  context.calculatePrimitiveDataAreaWeightedSum( UUIDs_tree, "radiation_flux_PAR", PAR_tree ); //sum up absorbed PAR flux for each tree primitive and weight by primitive surface area.
+  float PAR_ground;
+  context.calculatePrimitiveDataAreaWeightedSum( UUIDs_ground, "radiation_flux_PAR", PAR_ground );  //sum up absorbed PAR flux for each ground primitive and weight by primitive surface area.
+
+  float fPAR = PAR_tree/(PAR_tree+PAR_ground);
+
+  std::cout << "Fraction of intercepted PAR is " << fPAR << std::endl;
+ ~~~~~~
+
+The above example assumes that we have already added some geometry to the Context, separated leaf and ground UUIDs, and declared and set up the radiation model. For a full example, see \ref radiation_basics_tutorial "Tutorial 10".
+
+ \subsubsection RadCamOut Writing Camera Images to File
+
+ Simulated camera data can be written to file as a JPEG image, or the raw pixel data can be queried from the Context.
+
+ JPEG images are written either as a grayscale image (1 spectral band) or and RGB image (3 spectral bands) using the \ref RadiationModel::writeCameraImage() method. This method takes three required arguments and two optional arguments: 1) a string denoting the label of a camera that was added through the \ref RadiationModel::addRadiationCamera() method, 2) a vector of strings denoting the label(s) of radiation bands to be written to the image(s), which must contain exactly 1 element (grayscale image) or 3 elements (RGB image), and 3) a string denoting the base of the image filename, which may be appended with information like a radiation band label or frame count. The two optional arguments are: 1) the relative path to the directory where the images should be stored, and 2) a numerical integer identifier to be appended to the image file name (e.g., "camera_thermal_00001.jpeg"). Note that this value must be less than or equal to 99,9999. By default, images are stored in the current working directory, and the numerical identifier is omitted unless a value is provided.
+
+ \paragraph RadCamImageCorrections Applying Camera Image Corrections
+
+ Before writing RGB camera images, you can apply post-processing corrections using the \ref RadiationModel::applyCameraImageCorrections() method. This method applies brightness/contrast adjustment, saturation adjustment, and gamma compression to produce more realistic camera-like output. The correction parameters are automatically saved to camera metadata if metadata export is enabled via \ref RadiationModel::enableCameraMetadata().
+
+ ~~~~~~{.cpp}
+ // After running radiation simulation...
+ radiationmodel.runBand({"red","green","blue"});
+
+ // Apply image corrections before writing
+ radiationmodel.applyCameraImageCorrections("visible", "red", "green", "blue",
+                                            1.5f,  // saturation adjustment (1.0 = no change)
+                                            1.2f,  // brightness adjustment
+                                            1.1f); // contrast adjustment
+
+ // Write corrected image (metadata JSON will include image_processing parameters if enabled)
+ radiationmodel.writeCameraImage("visible", {"red","green","blue"}, "myimage");
+ ~~~~~~
+
+ \note The older method \ref RadiationModel::applyImageProcessingPipeline() is deprecated. Use \ref RadiationModel::applyCameraImageCorrections() instead.
+
+ \subsubsection RadCamSegmentation Writing Camera Image Segmentation Masks
+
+ In addition to regular camera images, the radiation model can generate segmentation masks in COCO JSON format for machine learning applications. Segmentation masks identify and outline objects within camera images, providing pixel-level annotations that can be used for training object detection and segmentation models.
+
+ Two methods are available for writing segmentation masks:
+
+ 1\. \ref RadiationModel::writeImageSegmentationMasks() - Creates segmentation masks based on primitive data labels.
+
+ 2\. \ref RadiationModel::writeImageSegmentationMasks_ObjectData() - Creates segmentation masks based on object data labels.
+
+ Both methods take the following arguments: 1) a string denoting the camera label, 2) a string denoting the primitive/object data label to use for segmentation, 3) an integer object class ID for COCO annotations, 4) a string denoting the JSON output filename (can include a relative path), 5) a string denoting the image file corresponding to these labels, 6) an optional vector of strings specifying primitive or object data labels whose mean values will be calculated for each mask and written as attributes (defaults to empty vector), and 7) an optional boolean flag to append to existing JSON files (defaults to false for new files).
+
+ The segmentation masks are generated using boundary tracing algorithms that identify connected regions of pixels with the same data label values. Each unique label value becomes a separate annotation in the COCO JSON output, with precise polygon boundaries traced around the object regions.
+
+ When the append flag is set to true, new annotations are added to existing JSON files, allowing multiple primitive/object types to be combined into a single segmentation dataset. This is useful for creating comprehensive annotations that include both foreground objects and background elements like ground surfaces.
+
+ ~~~~~~{.cpp}
+ // Write segmentation masks for bunny objects (primitive data approach)
+ radiationmodel.writeImageSegmentationMasks("visible", "bunny", 1, "bunny_masks", "./");
+
+ // Write segmentation masks for ground surfaces  
+ radiationmodel.writeImageSegmentationMasks("visible", "ground", 0, "ground_masks", "./");
+
+ // Append both to create combined annotations
+ radiationmodel.writeImageSegmentationMasks("visible", "ground", 0, "combined_masks", "./", false);
+ radiationmodel.writeImageSegmentationMasks("visible", "bunny", 1, "combined_masks", "./", true);
+ ~~~~~~
+
+ Below is example code of writing an RGB image (3 spectral bands).
+
+ ~~~~~~{.cpp}
+ #include "RadiationModel.h"
+ using namespace helios;
+
+ int main(){
+
+    Context context;
+
+    std::vector<uint> UUIDs_bunny = context.loadPLY( "../../../PLY/StanfordBunny.ply", nullorigin, 1.f );
+
+    std::vector<uint> UUIDs_ground = context.addTile( nullorigin, make_vec2(3,3), nullrotation, make_int2(200,200) );
+
+    // Set labels that we'll use to label pixels
+    context.setPrimitiveData( UUIDs_bunny, "bunny", 1 );
+    context.setPrimitiveData( UUIDs_ground, "bunny", 0 );
+
+    // Load and set spectral reflectivity data for bunny based on a grapevine leaf and ground based on soil
+    context.loadXML("plugins/radiation/spectral_data/leaf_surface_spectral_library.xml");
+    context.setPrimitiveData( UUIDs_bunny, "reflectivity_spectrum", "grape_leaf_reflectivity_0000" );
+    context.setPrimitiveData( UUIDs_ground, "reflectivity_spectrum", "soil_reflectivity_0000" );
+
+    RadiationModel radiationmodel(&context);
+
+    // Add a sun sphere radiation source
+    uint source = radiationmodel.addSunSphereRadiationSource(make_SphericalCoord(deg2rad(90-50), deg2rad(40)));
+    // Set the solar spectrum to ASTMG173 from the library
+    radiationmodel.setSourceSpectrum( source, "solar_spectrum_direct_ASTMG173" );
+
+    float solar_flux = 900.f; //flux from sun, W/m2
+
+    // Add bands red, green, and blue
+    radiationmodel.addRadiationBand("red");
+    radiationmodel.disableEmission("red");
+    radiationmodel.setSourceFlux(source, "red", solar_flux);
+    radiationmodel.setScatteringDepth("red", 3);
+
+    radiationmodel.copyRadiationBand("red", "green");
+    radiationmodel.copyRadiationBand("red", "blue");
+
+    radiationmodel.updateGeometry();
+
+    float camera_height = 2;
+    CameraProperties properties; //default camera properties
+    properties.focal_plane_distance = camera_height-0.75;
+    properties.HFOV = std::atan(1.5f/camera_height)*180.f/M_PI*2.f; //exactly frame the ground
+
+    vec3 camera_position(0,0,camera_height);
+    vec3 camera_lookat(0,0,0);
+    uint antialiasing_samples = 100;
+
+    radiationmodel.addRadiationCamera("visible", {"red","green","blue"}, camera_position, camera_lookat, properties, antialiasing_samples );
+
+    // Load and set calibrated camera spectral response for Nikon B500 camera and ASTMG173 solar spectrum
+    context.loadXML("plugins/radiation/spectral_data/camera_spectral_library.xml");
+    std::string camera_spectrum_base = "calibrated_sun_NikonB500_spectral_response";
+    radiationmodel.setCameraSpectralResponse("visible", "red", camera_spectrum_base+"_red");
+    radiationmodel.setCameraSpectralResponse("visible", "green", camera_spectrum_base+"_green");
+    radiationmodel.setCameraSpectralResponse("visible", "blue", camera_spectrum_base+"_blue");
+
+    radiationmodel.runBand({"red","green","blue"});
+
+    // writing output image
+    radiationmodel.writeCameraImage("visible", {"red","green","blue"}, "myimage" );
+
+    // writing image labels based on primitive data 'bunny'
+    radiationmodel.writePrimitiveDataLabelMap( "visible", "bunny", "bunny" );
+
+    return 0;
+ }
+ ~~~~~~
+
+ The above code would produce an image in the current working directory called "camera_visible_myimage.jpeg", which is shown below, along with a file labels.txt that contains the primitive data labels for each pixel.
+
+ \image html camera_visible_myimage.jpeg
+
+ \image html Bunny_pixel_labels.png
+
+
+*/

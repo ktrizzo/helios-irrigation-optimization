@@ -1,0 +1,8 @@
+# OSX index files
+**/.DS_Store
+# CLion configuration
+.idea/*
+# Compiled outputs 
+samples/*/build/*
+projects/*/build/*
+plugins/*/build/*

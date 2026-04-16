@@ -1,0 +1,999 @@
+/** \file "PhotosynthesisModel.cpp" Primary source file for photosynthesis plug-in.
+
+Copyright (C) 2016-2026 Brian Bailey
+
+    This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, version 2.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+*/
+
+#include "PhotosynthesisModel.h"
+#include <complex>
+
+using namespace std;
+using namespace helios;
+
+namespace {
+    // Material data labels for Empirical model
+    constexpr const char *LABEL_EMP_Tref = "photo_emp_Tref";
+    constexpr const char *LABEL_EMP_Ci_ref = "photo_emp_Ci_ref";
+    constexpr const char *LABEL_EMP_Asat = "photo_emp_Asat";
+    constexpr const char *LABEL_EMP_theta = "photo_emp_theta";
+    constexpr const char *LABEL_EMP_Tmin = "photo_emp_Tmin";
+    constexpr const char *LABEL_EMP_Topt = "photo_emp_Topt";
+    constexpr const char *LABEL_EMP_q = "photo_emp_q";
+    constexpr const char *LABEL_EMP_R = "photo_emp_R";
+    constexpr const char *LABEL_EMP_ER = "photo_emp_ER";
+    constexpr const char *LABEL_EMP_kC = "photo_emp_kC";
+
+    // Material data labels for Farquhar model
+    constexpr const char *LABEL_FQ_Vcmax = "photo_fq_Vcmax";
+    constexpr const char *LABEL_FQ_Jmax = "photo_fq_Jmax";
+    constexpr const char *LABEL_FQ_Rd = "photo_fq_Rd";
+    constexpr const char *LABEL_FQ_alpha = "photo_fq_alpha";
+    constexpr const char *LABEL_FQ_O = "photo_fq_O";
+    constexpr const char *LABEL_FQ_TPU_flag = "photo_fq_TPU_flag";
+    constexpr const char *LABEL_FQ_c_Rd = "photo_fq_c_Rd";
+    constexpr const char *LABEL_FQ_c_Vcmax = "photo_fq_c_Vcmax";
+    constexpr const char *LABEL_FQ_c_Jmax = "photo_fq_c_Jmax";
+    constexpr const char *LABEL_FQ_c_Gamma = "photo_fq_c_Gamma";
+    constexpr const char *LABEL_FQ_c_Kc = "photo_fq_c_Kc";
+    constexpr const char *LABEL_FQ_c_Ko = "photo_fq_c_Ko";
+    constexpr const char *LABEL_FQ_dH_Rd = "photo_fq_dH_Rd";
+    constexpr const char *LABEL_FQ_dH_Vcmax = "photo_fq_dH_Vcmax";
+    constexpr const char *LABEL_FQ_dH_Jmax = "photo_fq_dH_Jmax";
+    constexpr const char *LABEL_FQ_dH_Gamma = "photo_fq_dH_Gamma";
+    constexpr const char *LABEL_FQ_dH_Kc = "photo_fq_dH_Kc";
+    constexpr const char *LABEL_FQ_dH_Ko = "photo_fq_dH_Ko";
+} // namespace
+
+PhotosynthesisModel::PhotosynthesisModel(helios::Context *a_context) {
+    context = a_context;
+
+    // default values set here
+    model = "farquhar";
+
+    i_PAR_default = 0;
+    TL_default = 300;
+    CO2_default = 390;
+    gM_default = 0.25;
+    gH_default = 1;
+}
+
+
+void PhotosynthesisModel::setModelType_Empirical() {
+    model = "empirical";
+}
+
+void PhotosynthesisModel::setModelType_Farquhar() {
+    model = "farquhar";
+}
+
+
+void PhotosynthesisModel::setModelCoefficients(const EmpiricalModelCoefficients &modelcoefficients) {
+    empiricalmodelcoeffs = modelcoefficients;
+    empiricalmodel_coefficients.clear();
+    model = "empirical";
+}
+
+void PhotosynthesisModel::setModelCoefficients(const EmpiricalModelCoefficients &modelcoefficients, const std::vector<uint> &UUIDs) {
+    for (uint UUID: UUIDs) {
+        empiricalmodel_coefficients[UUID] = modelcoefficients;
+    }
+    model = "empirical";
+}
+
+void PhotosynthesisModel::setModelCoefficients(const FarquharModelCoefficients &modelcoefficients) {
+    farquharmodelcoeffs = modelcoefficients;
+    farquharmodel_coefficients.clear();
+    model = "farquhar";
+}
+
+void PhotosynthesisModel::setModelCoefficients(const FarquharModelCoefficients &modelcoefficients, const std::vector<uint> &UUIDs) {
+    for (uint UUID: UUIDs) {
+        farquharmodel_coefficients[UUID] = modelcoefficients;
+    }
+    model = "farquhar";
+}
+
+void PhotosynthesisModel::setModelCoefficients(const std::vector<FarquharModelCoefficients> &modelcoefficients, const std::vector<uint> &UUIDs) {
+    if (modelcoefficients.size() != UUIDs.size()) {
+        std::cerr << "WARNING (PhotosynthesisModel::setModelCoefficients): number of model coefficients (" + std::to_string(modelcoefficients.size()) + ") does not match number of UUIDs (" + std::to_string(UUIDs.size()) + ")" << std::endl;
+        return;
+    }
+    for (uint i = 0; i < UUIDs.size(); i++) {
+        farquharmodel_coefficients[UUIDs.at(i)] = modelcoefficients.at(i);
+    }
+    model = "farquhar";
+}
+
+void PhotosynthesisModel::setFarquharCoefficientsFromLibrary(const std::string &species) {
+    FarquharModelCoefficients fmc;
+    fmc = getFarquharCoefficientsFromLibrary(species);
+    farquharmodelcoeffs = fmc;
+    farquharmodel_coefficients.clear();
+    model = "farquhar";
+}
+
+void PhotosynthesisModel::setFarquharCoefficientsFromLibrary(const std::string &species, const std::vector<uint> &UUIDs) {
+    FarquharModelCoefficients fmc;
+    fmc = getFarquharCoefficientsFromLibrary(species);
+    for (uint UUID: UUIDs) {
+        farquharmodel_coefficients[UUID] = fmc;
+    }
+    model = "farquhar";
+}
+
+// Material-based coefficient setters
+
+void PhotosynthesisModel::setModelCoefficients(const std::string &material_label, const EmpiricalModelCoefficients &coeffs) {
+    context->setMaterialData(material_label, LABEL_EMP_Tref, coeffs.Tref);
+    context->setMaterialData(material_label, LABEL_EMP_Ci_ref, coeffs.Ci_ref);
+    context->setMaterialData(material_label, LABEL_EMP_Asat, coeffs.Asat);
+    context->setMaterialData(material_label, LABEL_EMP_theta, coeffs.theta);
+    context->setMaterialData(material_label, LABEL_EMP_Tmin, coeffs.Tmin);
+    context->setMaterialData(material_label, LABEL_EMP_Topt, coeffs.Topt);
+    context->setMaterialData(material_label, LABEL_EMP_q, coeffs.q);
+    context->setMaterialData(material_label, LABEL_EMP_R, coeffs.R);
+    context->setMaterialData(material_label, LABEL_EMP_ER, coeffs.ER);
+    context->setMaterialData(material_label, LABEL_EMP_kC, coeffs.kC);
+
+    // Clear cache for this material
+    uint matID = context->getMaterialIDFromLabel(material_label);
+    material_coefficient_cache_empirical.erase(matID);
+
+    model = "empirical";
+}
+
+void PhotosynthesisModel::setModelCoefficients(const std::string &material_label, const FarquharModelCoefficients &coeffs) {
+    // Get temperature response parameters
+    PhotosyntheticTemperatureResponseParameters vcmax_resp = const_cast<FarquharModelCoefficients &>(coeffs).getVcmaxTempResponse();
+    PhotosyntheticTemperatureResponseParameters jmax_resp = const_cast<FarquharModelCoefficients &>(coeffs).getJmaxTempResponse();
+    PhotosyntheticTemperatureResponseParameters rd_resp = const_cast<FarquharModelCoefficients &>(coeffs).getRdTempResponse();
+    PhotosyntheticTemperatureResponseParameters alpha_resp = const_cast<FarquharModelCoefficients &>(coeffs).getQuantumEfficiencyTempResponse();
+
+    // Serialize temperature response parameters for Vcmax
+    context->setMaterialData(material_label, LABEL_FQ_Vcmax, vcmax_resp.value_at_25C);
+    context->setMaterialData(material_label, "photo_fq_Vcmax_dHa", vcmax_resp.dHa);
+    context->setMaterialData(material_label, "photo_fq_Vcmax_dHd", vcmax_resp.dHd);
+    context->setMaterialData(material_label, "photo_fq_Vcmax_Topt", vcmax_resp.Topt);
+
+    // Serialize temperature response parameters for Jmax
+    context->setMaterialData(material_label, LABEL_FQ_Jmax, jmax_resp.value_at_25C);
+    context->setMaterialData(material_label, "photo_fq_Jmax_dHa", jmax_resp.dHa);
+    context->setMaterialData(material_label, "photo_fq_Jmax_dHd", jmax_resp.dHd);
+    context->setMaterialData(material_label, "photo_fq_Jmax_Topt", jmax_resp.Topt);
+
+    // Serialize temperature response parameters for Rd
+    context->setMaterialData(material_label, LABEL_FQ_Rd, rd_resp.value_at_25C);
+    context->setMaterialData(material_label, "photo_fq_Rd_dHa", rd_resp.dHa);
+    context->setMaterialData(material_label, "photo_fq_Rd_dHd", rd_resp.dHd);
+    context->setMaterialData(material_label, "photo_fq_Rd_Topt", rd_resp.Topt);
+
+    // Serialize temperature response parameters for alpha
+    context->setMaterialData(material_label, LABEL_FQ_alpha, alpha_resp.value_at_25C);
+    context->setMaterialData(material_label, "photo_fq_alpha_dHa", alpha_resp.dHa);
+
+    // Serialize other parameters
+    context->setMaterialData(material_label, LABEL_FQ_O, coeffs.O);
+    context->setMaterialData(material_label, LABEL_FQ_TPU_flag, coeffs.TPU_flag);
+
+    // Clear cache for this material
+    uint matID = context->getMaterialIDFromLabel(material_label);
+    material_coefficient_cache_farquhar.erase(matID);
+
+    model = "farquhar";
+}
+
+void PhotosynthesisModel::setFarquharCoefficientsFromLibrary(const std::string &species, const std::string &material_label) {
+    FarquharModelCoefficients coeffs = getFarquharCoefficientsFromLibrary(species);
+    setModelCoefficients(material_label, coeffs);
+}
+
+FarquharModelCoefficients PhotosynthesisModel::getFarquharCoefficientsFromLibrary(const std::string &species) {
+    std::string s = std::move(species);
+    FarquharModelCoefficients fmc;
+    bool defaultSpecies = false;
+    if (s == "Almond" || s == "almond") {
+        fmc.setVcmax(105.9, 65.33f);
+        fmc.setJmax(166.34, 46.36);
+        fmc.setRd(1.49, 46.39f);
+        fmc.setQuantumEfficiency_alpha(0.336);
+    } else if (s == "Apple" || s == "apple") {
+        fmc.setVcmax(101.08, 65.33f);
+        fmc.setJmax(167.03, 47.62);
+        fmc.setRd(3.00, 46.39f);
+        fmc.setQuantumEfficiency_alpha(0.432);
+    } else if (s == "Cherry" || s == "cherry") {
+        fmc.setVcmax(75.65, 65.33f);
+        fmc.setJmax(129.06, 48.49);
+        fmc.setRd(2.12, 46.39f);
+        fmc.setQuantumEfficiency_alpha(0.404);
+    } else if (s == "Prune" || s == "prune") {
+        fmc.setVcmax(75.88, 65.33f);
+        fmc.setJmax(129.41, 48.58);
+        fmc.setRd(1.56, 46.39f);
+        fmc.setQuantumEfficiency_alpha(0.402);
+    } else if (s == "Pear" || s == "pear") {
+        fmc.setVcmax(107.69, 65.33f);
+        fmc.setJmax(176.71, 46.04);
+        fmc.setRd(1.510, 46.39f);
+        fmc.setQuantumEfficiency_alpha(0.274);
+    } else if (s == "PistachioFemale" || s == "pistachiofemale" || s == "pistachio_female" || s == "Pistachio_Female" || s == "Pistachio_female" || s == "pistachio" || s == "Pistachio") {
+        fmc.setVcmax(138.99, 65.33f);
+        fmc.setJmax(221.76, 43.80);
+        fmc.setRd(2.850, 46.39f);
+        fmc.setQuantumEfficiency_alpha(0.366);
+    } else if (s == "PistachioMale" || s == "pistachiomale" || s == "pistachio_male" || s == "Pistachio_Male" || s == "Pistachio_male") {
+        fmc.setVcmax(154.17, 65.33f);
+        fmc.setJmax(243.20, 50.89);
+        fmc.setRd(2.050, 46.39f);
+        fmc.setQuantumEfficiency_alpha(0.335);
+    } else if (s == "Walnut" || s == "walnut") {
+        fmc.setVcmax(121.85, 65.33f);
+        fmc.setJmax(197.25, 48.35);
+        fmc.setRd(1.960, 46.39f);
+        fmc.setQuantumEfficiency_alpha(0.404);
+    } else if (s == "Grape" || s == "grape") {
+        // cv. Cabernet Sauvignon
+        fmc.setVcmax(74.5, 76.1, 318.8 - 273.15, 499.8);
+        fmc.setJmax(180.2, 23.0, 313.8 - 273.15, 502.3);
+        fmc.setTPU(7.7, 24.0, 314.6 - 273.15, 496.4);
+        fmc.setRd(1.3, 46.39f);
+        fmc.setQuantumEfficiency_alpha(0.304);
+        fmc.setLightResponseCurvature_theta(0.06);
+    } else if (s == "Elderberry" || s == "elderberry" || s == "blue_elderberry") {
+        fmc.setVcmax(37.7, 66.0, 319.4 - 273.15, 496.0);
+        fmc.setJmax(149.7, 24.5, 314.8 - 273.15, 492.9);
+        fmc.setTPU(7.3, 33.6, 314.5 - 273.15, 497.5);
+        fmc.setRd(1.3, 46.39f);
+        fmc.setQuantumEfficiency_alpha(0.202);
+        fmc.setLightResponseCurvature_theta(0.472);
+    } else if (s == "Toyon" || s == "toyon") {
+        fmc.setVcmax(52.8, 42.1, 315.1 - 273.15, 483.0);
+        fmc.setJmax(142.4, 9.0, 313.0 - 273.15, 486.2);
+        fmc.setTPU(6.6, 14.0, 314.8 - 273.15, 493.8);
+        fmc.setRd(0.8, 46.39f);
+        fmc.setQuantumEfficiency_alpha(0.290);
+        fmc.setLightResponseCurvature_theta(0.532);
+    } else if (s == "Big_Leaf_Maple" || s == "big_leaf_maple" || s == "Maple" || s == "maple") {
+        fmc.setVcmax(96.4, 48.9, 307.1 - 273.15, 505.0);
+        fmc.setJmax(168.0, 8.5, 304.7 - 273.15, 476.7);
+        fmc.setTPU(2.7, 32.1, 308.3 - 273.15, 471.6);
+        fmc.setRd(0.1, 46.39f);
+        fmc.setQuantumEfficiency_alpha(0.077);
+    } else if (s == "Western_Redbud" || s == "western_redbud" || s == "Redbud" || s == "redbud") {
+        fmc.setVcmax(68.5, 66.6, 315.1 - 273.15, 496.0);
+        fmc.setJmax(132.4, 41.2, 313.1 - 273.15, 474.0);
+        fmc.setTPU(6.6, 34.3, 312.8 - 273.15, 463.2);
+        fmc.setRd(0.8, 46.39f);
+        fmc.setQuantumEfficiency_alpha(0.41);
+        fmc.setLightResponseCurvature_theta(0.04);
+    } else if (s == "Baylaurel" || s == "baylaurel" || s == "Bay_Laurel" || s == "bay_laurel" || s == "bay" || s == "Bay") {
+        fmc.setVcmax(97.5, 49.1, 308.6 - 273.15, 505.8);
+        fmc.setJmax(193.0, 34.0, 308.5 - 273.15, 456.7);
+        fmc.setTPU(3.3, 0.1, 309.4 - 273.15, 477.5);
+        fmc.setRd(0.1, 46.39f);
+        fmc.setQuantumEfficiency_alpha(0.037);
+    } else if (s == "Olive" || s == "olive") {
+        fmc.setVcmax(75.9, 55.4, 315.2 - 273.15, 497.0);
+        fmc.setJmax(170.4, 32.2, 312.5 - 273.15, 493.4);
+        fmc.setTPU(8.3, 37.2, 311.7 - 273.15, 498.9);
+        fmc.setRd(1.9, 46.39f);
+        fmc.setQuantumEfficiency_alpha(0.398);
+    } else if (s == "EasternRedbudSunlit" || s == "easternredbudsunlit" || s == "easternredbud_sunlit" || s == "EasternRedbud_Sunlit" || s == "EasternRedbud_sunlit" || s == "sunlitEasternRedbud" || s == "SunlitEasternRedbud" ||
+               s == "eastern_redbud_sunlit" || s == "Eastern_Redbud_Sunlit") {
+        fmc.setVcmax(104.35, 54.9927, 313.8828 - 273.15, 365.1581);
+        fmc.setJmax(211.3090, 46.5415, 310.9710 - 273.15, 200.3197);
+        fmc.setTPU(9.9965, 48.4469, 310.3164 - 273.15, 167.9181);
+        fmc.setRd(1.4136, 46.39f);
+        fmc.setQuantumEfficiency_alpha(0.4151);
+    } else if (s == "EasternRedbudShaded" || s == "easternredbudshaded" || s == "easternredbud_shaded" || s == "EasternRedbud_Shaded" || s == "EasternRedbud_shaded" || s == "shadedEasternRedbud" || s == "ShadedEasternRedbud" ||
+               s == "eastern_redbud_shaded" || s == "Eastern_Redbud_Shaded") {
+        fmc.setVcmax(84.7, 65.33f);
+        fmc.setJmax(190.53, 0.249);
+        fmc.setTPU(9.53, 0.0747);
+        fmc.setRd(1.13, 46.39f);
+        fmc.setQuantumEfficiency_alpha(0.713);
+    } else {
+        defaultSpecies = true;
+        if (message_flag) {
+            std::cerr << "WARNING (PhotosynthesisModel::getModelCoefficients): unknown species " << s << ". Setting default (Almond)." << std::endl;
+        }
+    }
+    if (!defaultSpecies) {
+        if (message_flag) {
+            std::cerr << "Setting Photosynthesis Model Coefficients to " << s << std::endl;
+        }
+    }
+    return fmc;
+}
+
+// Cached coefficient retrieval helpers
+
+EmpiricalModelCoefficients PhotosynthesisModel::getCoefficientsForPrimitive_Empirical(uint UUID) const {
+    uint materialID = context->getPrimitiveMaterialID(UUID);
+
+    // Check cache first
+    if (material_coefficient_cache_empirical.find(materialID) != material_coefficient_cache_empirical.end()) {
+        return material_coefficient_cache_empirical.at(materialID);
+    }
+
+    // Try to load from material data
+    EmpiricalModelCoefficients coeffs;
+    bool found = true;
+
+    try {
+        const Material &mat = context->getMaterial(materialID);
+        if (mat.doesMaterialDataExist(LABEL_EMP_Tref) && mat.doesMaterialDataExist(LABEL_EMP_Ci_ref) && mat.doesMaterialDataExist(LABEL_EMP_Asat) && mat.doesMaterialDataExist(LABEL_EMP_theta) && mat.doesMaterialDataExist(LABEL_EMP_Tmin) &&
+            mat.doesMaterialDataExist(LABEL_EMP_Topt) && mat.doesMaterialDataExist(LABEL_EMP_q) && mat.doesMaterialDataExist(LABEL_EMP_R) && mat.doesMaterialDataExist(LABEL_EMP_ER) && mat.doesMaterialDataExist(LABEL_EMP_kC)) {
+
+            mat.getMaterialData(LABEL_EMP_Tref, coeffs.Tref);
+            mat.getMaterialData(LABEL_EMP_Ci_ref, coeffs.Ci_ref);
+            mat.getMaterialData(LABEL_EMP_Asat, coeffs.Asat);
+            mat.getMaterialData(LABEL_EMP_theta, coeffs.theta);
+            mat.getMaterialData(LABEL_EMP_Tmin, coeffs.Tmin);
+            mat.getMaterialData(LABEL_EMP_Topt, coeffs.Topt);
+            mat.getMaterialData(LABEL_EMP_q, coeffs.q);
+            mat.getMaterialData(LABEL_EMP_R, coeffs.R);
+            mat.getMaterialData(LABEL_EMP_ER, coeffs.ER);
+            mat.getMaterialData(LABEL_EMP_kC, coeffs.kC);
+
+            material_coefficient_cache_empirical[materialID] = coeffs;
+            return coeffs;
+        } else {
+            found = false;
+        }
+    } catch (const std::exception &) {
+        found = false;
+    }
+
+    // Fallback to legacy UUID map
+    if (!found && empiricalmodel_coefficients.find(UUID) != empiricalmodel_coefficients.end()) {
+        return empiricalmodel_coefficients.at(UUID);
+    }
+
+    // Fallback to global default
+    return empiricalmodelcoeffs;
+}
+
+FarquharModelCoefficients PhotosynthesisModel::getCoefficientsForPrimitive_Farquhar(uint UUID) const {
+    uint materialID = context->getPrimitiveMaterialID(UUID);
+
+    // Check cache first
+    if (material_coefficient_cache_farquhar.find(materialID) != material_coefficient_cache_farquhar.end()) {
+        return material_coefficient_cache_farquhar.at(materialID);
+    }
+
+    // Try to load from material data
+    FarquharModelCoefficients coeffs;
+    bool found = true;
+
+    try {
+        const Material &mat = context->getMaterial(materialID);
+        if (mat.doesMaterialDataExist(LABEL_FQ_Vcmax) && mat.doesMaterialDataExist(LABEL_FQ_Jmax) && mat.doesMaterialDataExist(LABEL_FQ_Rd) && mat.doesMaterialDataExist(LABEL_FQ_alpha)) {
+
+            // Reconstruct temperature response parameters for Vcmax
+            float vcmax_25C, vcmax_dHa, vcmax_dHd, vcmax_Topt;
+            mat.getMaterialData(LABEL_FQ_Vcmax, vcmax_25C);
+            mat.getMaterialData("photo_fq_Vcmax_dHa", vcmax_dHa);
+            mat.getMaterialData("photo_fq_Vcmax_dHd", vcmax_dHd);
+            mat.getMaterialData("photo_fq_Vcmax_Topt", vcmax_Topt);
+
+            // Reconstruct for Jmax
+            float jmax_25C, jmax_dHa, jmax_dHd, jmax_Topt;
+            mat.getMaterialData(LABEL_FQ_Jmax, jmax_25C);
+            mat.getMaterialData("photo_fq_Jmax_dHa", jmax_dHa);
+            mat.getMaterialData("photo_fq_Jmax_dHd", jmax_dHd);
+            mat.getMaterialData("photo_fq_Jmax_Topt", jmax_Topt);
+
+            // Reconstruct for Rd
+            float rd_25C, rd_dHa, rd_dHd, rd_Topt;
+            mat.getMaterialData(LABEL_FQ_Rd, rd_25C);
+            mat.getMaterialData("photo_fq_Rd_dHa", rd_dHa);
+            mat.getMaterialData("photo_fq_Rd_dHd", rd_dHd);
+            mat.getMaterialData("photo_fq_Rd_Topt", rd_Topt);
+
+            // Reconstruct for alpha
+            float alpha_25C, alpha_dHa;
+            mat.getMaterialData(LABEL_FQ_alpha, alpha_25C);
+            mat.getMaterialData("photo_fq_alpha_dHa", alpha_dHa);
+
+            // Use setter methods to properly populate the coefficient struct
+            if (vcmax_Topt < 1000.f) { // Has optimum
+                coeffs.setVcmax(vcmax_25C, vcmax_dHa, vcmax_Topt - 273.15f, vcmax_dHd);
+            } else if (vcmax_dHa > 0.f) { // Monotonic increase
+                coeffs.setVcmax(vcmax_25C, vcmax_dHa);
+            } else { // Constant
+                coeffs.setVcmax(vcmax_25C);
+            }
+
+            if (jmax_Topt < 1000.f) {
+                coeffs.setJmax(jmax_25C, jmax_dHa, jmax_Topt - 273.15f, jmax_dHd);
+            } else if (jmax_dHa > 0.f) {
+                coeffs.setJmax(jmax_25C, jmax_dHa);
+            } else {
+                coeffs.setJmax(jmax_25C);
+            }
+
+            if (rd_Topt < 1000.f) {
+                coeffs.setRd(rd_25C, rd_dHa, rd_Topt - 273.15f, rd_dHd);
+            } else if (rd_dHa > 0.f) {
+                coeffs.setRd(rd_25C, rd_dHa);
+            } else {
+                coeffs.setRd(rd_25C);
+            }
+
+            if (alpha_dHa > 0.f) {
+                coeffs.setQuantumEfficiency_alpha(alpha_25C, alpha_dHa);
+            } else {
+                coeffs.setQuantumEfficiency_alpha(alpha_25C);
+            }
+
+            // Set O and TPU_flag
+            mat.getMaterialData(LABEL_FQ_O, coeffs.O);
+            mat.getMaterialData(LABEL_FQ_TPU_flag, coeffs.TPU_flag);
+
+            material_coefficient_cache_farquhar[materialID] = coeffs;
+            return coeffs;
+        } else {
+            found = false;
+        }
+    } catch (const std::exception &) {
+        found = false;
+    }
+
+    // Fallback to legacy UUID map
+    if (!found && farquharmodel_coefficients.find(UUID) != farquharmodel_coefficients.end()) {
+        return farquharmodel_coefficients.at(UUID);
+    }
+
+    // Fallback to global default
+    return farquharmodelcoeffs;
+}
+
+void PhotosynthesisModel::setCi(float Ci, const std::vector<uint> &UUIDs) {
+    // Fail-fast validation
+    if (Ci < 0.f) {
+        helios_runtime_error("ERROR (PhotosynthesisModel::setCi): Ci must be non-negative. Received Ci = " + std::to_string(Ci) + " umol/mol.");
+    }
+
+    if (!std::isfinite(Ci)) {
+        helios_runtime_error("ERROR (PhotosynthesisModel::setCi): Ci must be a finite value.");
+    }
+
+    // Reasonable range warning (typical C3 range: 50-800 umol/mol)
+    if (Ci > 2000.f && message_flag) {
+        std::cout << "WARNING (PhotosynthesisModel::setCi): Ci = " << Ci << " umol/mol is unusually high. Verify this is intentional." << std::endl;
+    }
+
+    // Set manual Ci for all specified UUIDs
+    for (uint UUID: UUIDs) {
+        if (!context->doesPrimitiveExist(UUID)) {
+            helios_runtime_error("ERROR (PhotosynthesisModel::setCi): Primitive with UUID " + std::to_string(UUID) + " does not exist.");
+        }
+        manual_Ci[UUID] = Ci;
+    }
+}
+
+void PhotosynthesisModel::run() {
+    run(context->getAllUUIDs());
+}
+
+void PhotosynthesisModel::run(const std::vector<uint> &lUUIDs) {
+
+    WarningAggregator warnings;
+    warnings.setEnabled(message_flag); // Respect existing message flag
+
+    for (uint UUID: lUUIDs) {
+
+        float i_PAR;
+        if (context->doesPrimitiveDataExist(UUID, "radiation_flux_PAR") && context->getPrimitiveDataType("radiation_flux_PAR") == HELIOS_TYPE_FLOAT) {
+            context->getPrimitiveData(UUID, "radiation_flux_PAR", i_PAR);
+            i_PAR = i_PAR * 4.57f; // umol/m^2-s (ref https://www.controlledenvironments.org/wp-content/uploads/sites/6/2017/06/Ch01.pdf)
+            if (i_PAR < 0) {
+                i_PAR = 0;
+                warnings.addWarning("negative_par_clipped", "PAR flux value provided was negative. Clipping to zero.");
+            }
+        } else {
+            i_PAR = i_PAR_default;
+        }
+
+        float TL;
+        if (context->doesPrimitiveDataExist(UUID, "temperature") && context->getPrimitiveDataType("temperature") == HELIOS_TYPE_FLOAT) {
+            context->getPrimitiveData(UUID, "temperature", TL);
+            if (TL < 200) {
+                warnings.addWarning("low_temperature", "Primitive temperature value was very low (" + std::to_string(TL) + "K). Using default. Are you using absolute temperature units?");
+                TL = TL_default;
+            }
+        } else {
+            TL = TL_default;
+        }
+
+        float CO2;
+        if (context->doesPrimitiveDataExist(UUID, "air_CO2") && context->getPrimitiveDataType("air_CO2") == HELIOS_TYPE_FLOAT) {
+            context->getPrimitiveData(UUID, "air_CO2", CO2);
+            if (CO2 < 0) {
+                CO2 = 0;
+                warnings.addWarning("negative_co2_clipped", "CO2 concentration value provided was negative. Clipping to zero.");
+            }
+        } else {
+            CO2 = CO2_default;
+        }
+
+        float gM;
+        if (context->doesPrimitiveDataExist(UUID, "moisture_conductance") && context->getPrimitiveDataType("moisture_conductance") == HELIOS_TYPE_FLOAT) {
+            context->getPrimitiveData(UUID, "moisture_conductance", gM);
+            if (gM < 0) {
+                gM = 0;
+                warnings.addWarning("negative_moisture_conductance_clipped", "Moisture conductance value provided was negative. Clipping to zero.");
+            }
+        } else {
+            gM = gM_default;
+        }
+
+        // Number of sides - check material first, then primitive data
+        uint twosided_flag = context->getPrimitiveTwosidedFlag(UUID, 1);
+        uint Nsides = (twosided_flag == 0) ? 1 : 2;
+
+        float stomatal_sidedness = 0.f; // default all stomata on one side (hypostomatous)
+        if (Nsides == 2 && context->doesPrimitiveDataExist(UUID, "stomatal_sidedness") && context->getPrimitiveDataType("stomatal_sidedness") == HELIOS_TYPE_FLOAT) {
+            context->getPrimitiveData(UUID, "stomatal_sidedness", stomatal_sidedness);
+        }
+
+        float gH;
+        if (context->doesPrimitiveDataExist(UUID, "boundarylayer_conductance") && context->getPrimitiveDataType("boundarylayer_conductance") == HELIOS_TYPE_FLOAT) {
+            context->getPrimitiveData(UUID, "boundarylayer_conductance", gH);
+        } else if (context->doesPrimitiveDataExist(UUID, "boundarylayer_conductance_out") && context->getPrimitiveDataType("boundarylayer_conductance_out") == HELIOS_TYPE_FLOAT) {
+            context->getPrimitiveData(UUID, "boundarylayer_conductance_out", gH);
+        } else {
+            gH = gH_default;
+        }
+        if (gH < 0) {
+            gH = 0;
+            warnings.addWarning("negative_boundarylayer_conductance_clipped", "Boundary-layer conductance value provided was negative. Clipping to zero.");
+        }
+
+        // combine stomatal (gM) and boundary-layer (gH) conductances
+        if (gH == 0 && gM == 0) { // if somehow both go to zero, can get NaN
+            gM = 0;
+        } else {
+            gM = 1.08f * gH * gM * (stomatal_sidedness / (1.08f * gH + gM * stomatal_sidedness) + (1.f - stomatal_sidedness) / (1.08f * gH + gM * (1.f - stomatal_sidedness)));
+        }
+
+        float A, Ci, Gamma, J_over_Jmax = 0.f;
+        int limitation_state, TPU_flag = 0;
+
+        if (model == "farquhar") { // Farquhar-von Caemmerer-Berry Model
+
+            // Check for manual Ci override first
+            if (manual_Ci.find(UUID) != manual_Ci.end()) {
+                // Use manual Ci, bypassing iterative calculation
+                Ci = manual_Ci.at(UUID);
+
+                FarquharModelCoefficients coeffs = getCoefficientsForPrimitive_Farquhar(UUID);
+
+                // Set up variables vector for evaluateCi_Farquhar
+                std::vector<float> variables{CO2, i_PAR, TL, gM, 0.f, 0.f, 0.f, float(TPU_flag), 0.f};
+
+                // Call evaluateCi_Farquhar directly to compute A for the manual Ci
+                // This bypasses the fzero iteration in evaluateFarquharModel
+                evaluateCi_Farquhar(Ci, variables, &coeffs); // Return value (residual) is unused
+
+                // Extract results from variables vector
+                A = variables[4];
+                limitation_state = (int) variables[5];
+                Gamma = variables[6];
+                J_over_Jmax = variables[8];
+
+                // Store in previous_Ci for consistency
+                previous_Ci[UUID] = Ci;
+
+            } else {
+                // Normal iterative calculation
+
+                // Initialize Ci with previous timestep value for temporal continuity, or reasonable default
+                if (previous_Ci.find(UUID) != previous_Ci.end()) {
+                    Ci = previous_Ci.at(UUID); // Use previous timestep's Ci
+                } else {
+                    Ci = CO2 * 0.7f; // Default initial guess (typical Ci/Ca ratio)
+                }
+
+                FarquharModelCoefficients coeffs = getCoefficientsForPrimitive_Farquhar(UUID);
+                A = evaluateFarquharModel(coeffs, i_PAR, TL, CO2, gM, Ci, Gamma, limitation_state, TPU_flag, J_over_Jmax, warnings);
+
+                // Store computed Ci for next timestep (temporal continuity)
+                previous_Ci[UUID] = Ci;
+            }
+
+        } else { // Empirical Model
+
+            EmpiricalModelCoefficients coeffs = getCoefficientsForPrimitive_Empirical(UUID);
+            A = evaluateEmpiricalModel(coeffs, i_PAR, TL, CO2, gM);
+        }
+
+        if (A == 0) {
+            warnings.addWarning("convergence_failure", "Solution did not converge for primitive " + std::to_string(UUID) + ".");
+        }
+
+        context->setPrimitiveData(UUID, "net_photosynthesis", A);
+
+        for (const auto &data: output_prim_data) {
+            if (data == "Ci" && model == "farquhar") {
+                context->setPrimitiveData(UUID, "Ci", Ci);
+            } else if (data == "limitation_state" && model == "farquhar") {
+                context->setPrimitiveData(UUID, "limitation_state", limitation_state);
+            } else if (data == "Gamma_CO2" && model == "farquhar") {
+                context->setPrimitiveData(UUID, "Gamma_CO2", Gamma);
+            } else if (data == "electron_transport_ratio" && model == "farquhar") {
+                context->setPrimitiveData(UUID, "electron_transport_ratio", J_over_Jmax);
+            }
+        }
+    }
+
+    warnings.report(std::cerr);
+}
+
+float PhotosynthesisModel::evaluateCi_Empirical(const EmpiricalModelCoefficients &params, float Ci, float CO2, float fL, float Rd, float gM) const {
+
+
+    //--- CO2 Response Function --- //
+
+    float fC = params.kC * Ci / params.Ci_ref;
+
+
+    //--- Assimilation Rate --- //
+
+    float A = params.Asat * fL * fC - Rd;
+
+    //--- Calculate error and update --- //
+
+    float resid = 0.75f * gM * (CO2 - Ci) - A;
+
+
+    return resid;
+}
+
+float PhotosynthesisModel::evaluateEmpiricalModel(const EmpiricalModelCoefficients &params, float i_PAR, float TL, float CO2, float gM) {
+
+    // initial guess for intercellular CO2
+    float Ci = CO2;
+
+    //--- Light Response Function --- //
+
+    float fL = i_PAR / (params.theta + i_PAR);
+
+    assert(fL >= 0 && fL <= 1);
+
+    //--- Respiration Rate --- //
+
+    float Rd = params.R * sqrt(TL - 273.f) * exp(-params.ER / TL);
+
+    float Ci_old = Ci;
+    float Ci_old_old = 0.95f * Ci;
+
+    float resid_old = evaluateCi_Empirical(params, Ci_old, CO2, fL, Rd, gM);
+    float resid_old_old = evaluateCi_Empirical(params, Ci_old_old, CO2, fL, Rd, gM);
+
+    float err = 10000, err_max = 0.01;
+    int iter = 0, max_iter = 100;
+    float resid;
+    while (err > err_max && iter < max_iter) {
+
+        if (resid_old == resid_old_old) { // this condition will cause NaN
+            break;
+        }
+
+        Ci = fabs((Ci_old_old * resid_old - Ci_old * resid_old_old) / (resid_old - resid_old_old));
+
+        resid = evaluateCi_Empirical(params, Ci, CO2, fL, Rd, gM);
+
+        resid_old_old = resid_old;
+        resid_old = resid;
+
+        err = fabs(resid);
+
+        Ci_old_old = Ci_old;
+        Ci_old = Ci;
+
+        iter++;
+    }
+
+    float A;
+    if (err > err_max) {
+        A = 0;
+    } else {
+        float fC = params.kC * Ci / params.Ci_ref;
+        A = params.Asat * fL * fC - Rd;
+    }
+
+    return A;
+}
+
+float PhotosynthesisModel::evaluateCi_Farquhar(float Ci, std::vector<float> &variables, const void *parameters) {
+
+    const FarquharModelCoefficients modelcoeffs = *reinterpret_cast<const FarquharModelCoefficients *>(parameters);
+
+    float Vcmax, Jmax, TPU, Rd, alpha, theta;
+
+    float CO2 = variables[0];
+    float Q = variables[1];
+    float TL = variables[2];
+    float gM = variables[3];
+    int TPUflag = modelcoeffs.TPU_flag;
+
+    float R = 0.0083144598; // molar gas constant (kJ/K/mol)
+    float O = 213.5; // ambient oxygen concentration (mmol/mol)
+    float c_Gamma = 19.02;
+    float dH_Gamma = 37.83;
+    float c_Kc = 38.05;
+    float dH_Kc = 79.43;
+    float c_Ko = 20.30;
+    float dH_Ko = 36.38;
+
+    float invDiffRT = (1.f / 298.15f - 1.f / TL) / R;
+
+    if (modelcoeffs.Vcmax > 0) {
+        Vcmax = modelcoeffs.Vcmax * expf(modelcoeffs.dH_Vcmax * (invDiffRT));
+    } else {
+        Vcmax = respondToTemperature(&modelcoeffs.VcmaxTempResponse, TL);
+    }
+
+    if (modelcoeffs.Jmax > 0) {
+        Jmax = modelcoeffs.Jmax * expf(modelcoeffs.dH_Jmax * (invDiffRT));
+    } else {
+        Jmax = respondToTemperature(&modelcoeffs.JmaxTempResponse, TL);
+    }
+
+    if (modelcoeffs.Rd > 0) {
+        Rd = modelcoeffs.Rd * expf(modelcoeffs.dH_Rd * (invDiffRT));
+    } else {
+        Rd = respondToTemperature(&modelcoeffs.RdTempResponse, TL);
+    }
+
+    if (modelcoeffs.alpha > 0) {
+        alpha = modelcoeffs.alpha;
+    } else {
+        alpha = respondToTemperature(&modelcoeffs.alphaTempResponse, TL);
+    }
+
+
+    TPU = respondToTemperature(&modelcoeffs.TPUTempResponse, TL);
+    theta = respondToTemperature(&modelcoeffs.thetaTempResponse, TL);
+
+
+    float Gamma_star = exp(c_Gamma - dH_Gamma / (R * TL));
+    float Kc = exp(c_Kc - dH_Kc / (R * TL));
+    float Ko = exp(c_Ko - dH_Ko / (R * TL));
+    float Kco = Kc * (1.f + O / Ko);
+
+    // thetaJ^2 + -(alphaQ+Jmax)J + alphaQJmax = 0
+    double a = std::max(theta, 0.0001f);
+    double ia = 1.000f / a;
+    double b = -(alpha * Q + Jmax);
+    double c = alpha * Q * Jmax;
+    double J = (-b - sqrt(pow(b, 2.000f) - 4.f * a * c)) * 0.5f * ia;
+    // J = Jmax * alpha * Q / (alpha * Q + Jmax);
+
+    // Store J/Jmax ratio for fluorescence calculations
+    float J_over_Jmax = (Jmax > 0.f) ? static_cast<float>(J / Jmax) : 0.f;
+    variables[8] = J_over_Jmax;
+
+    float Wc = Vcmax * Ci / (Ci + Kco);
+    float Wj = J * Ci / (4.f * Ci + 8.f * Gamma_star);
+
+    float smooth_factor = 0.99f;
+    float s = helios::clamp(0.5f + 0.5f * (Wc - Wj) / smooth_factor, 0.0f, 1.0f);
+    float smooth_min = Wc * (1.f - s) + Wj * s - smooth_factor * s * (1.f - s);
+
+    float A = (1.f - Gamma_star / Ci) * smooth_min - Rd;
+
+    // TPU comparison at assimilation level: A_TPU = 3*TPU - Rd (singularity-free)
+    // The Ci-dependent terms in Wp = 3*TPU*Ci/(Ci - Gamma*) cancel with (1 - Gamma*/Ci),
+    // so TPU-limited assimilation is simply a constant independent of Ci.
+    if (TPUflag == 1) {
+        float A_p = 3.f * TPU - Rd;
+        smooth_factor = 0.99f;
+        s = helios::clamp(0.5f + 0.5f * (A - A_p) / smooth_factor, 0.0f, 1.0f);
+        A = A * (1.f - s) + A_p * s - smooth_factor * s * (1.f - s);
+    }
+
+
+    float limitation_state;
+    if (Wj > Wc) { // Rubisco limited
+        limitation_state = 0;
+    } else { // Electron transport limited
+        limitation_state = 1;
+    }
+
+    //--- Calculate error and update --- //
+
+    float resid = 0.75f * gM * (CO2 - Ci) - A;
+
+    variables[4] = A;
+    variables[5] = limitation_state;
+
+    float Gamma = (Gamma_star + Kco * Rd / Vcmax) / (1.f - Rd / Vcmax); // Equation 39 of Farquhar et al. (1980)
+    variables[6] = Gamma;
+
+    return resid;
+}
+
+
+float PhotosynthesisModel::respondToTemperature(const PhotosyntheticTemperatureResponseParameters *params, float T_in_Kelvin) {
+    float T = T_in_Kelvin;
+    float R = 0.0083144598f;
+    float v25 = params->value_at_25C;
+    float dHa = params->dHa;
+    float dHd = params->dHd;
+    float Topt = params->Topt;
+    if (dHa == 0) {
+        return v25;
+    } else {
+        float logterm = logf(dHd / dHa - 1.f);
+        float t1 = 1.f + expf(dHd / R * (1.f / Topt - 1.f / 298.15f) - logterm);
+        float t2 = 1.f + expf(dHd / R * (1.f / Topt - 1.f / T) - logterm);
+        return v25 * exp(dHa / R * (1.f / 298.15f - 1.f / T)) * t1 / t2;
+    }
+}
+
+
+float PhotosynthesisModel::evaluateFarquharModel(const FarquharModelCoefficients &params, float i_PAR, float TL, float CO2, float gM, float &Ci, float &Gamma, int &limitation_state, int &TPU_flag, float &J_over_Jmax,
+                                                 helios::WarningAggregator &warnings) {
+
+    float A = 0;
+    std::vector<float> variables{CO2, i_PAR, TL, gM, A, float(limitation_state), Gamma, float(TPU_flag), 0.f};
+
+    // Temporal continuity approach: use previous Ci as initial guess, with fallbacks
+    // This leverages the fact that Ci changes slowly between timesteps
+    std::vector<float> initial_guesses;
+
+    // First try previous Ci if available (temporal continuity)
+    if (Ci > 0 && std::isfinite(Ci)) {
+        initial_guesses.push_back(Ci);
+    }
+
+    // Add fallback guesses based on research (physiologically reasonable values)
+    initial_guesses.insert(initial_guesses.end(), {CO2 * 0.7f, 100.0f, CO2 * 0.3f, CO2 * 0.9f, 50.0f});
+
+    bool overall_converged = false;
+    for (float guess: initial_guesses) {
+        // Reset variables for each attempt
+        std::vector<float> vars_attempt = variables;
+        bool attempt_converged = false;
+        float Ci_attempt = fzero(evaluateCi_Farquhar, vars_attempt, &params, guess, attempt_converged, 0.001f, 200);
+
+        // Check if solution converged and is physiologically reasonable
+        if (attempt_converged && Ci_attempt > 0 && std::isfinite(Ci_attempt)) {
+            Ci = Ci_attempt;
+            variables = vars_attempt;
+            overall_converged = true;
+            break;
+        }
+    }
+
+    // If all initial guesses failed, add warning to aggregator
+    if (!overall_converged) {
+        warnings.addWarning("photosynthesis_ci_convergence_failure", "Photosynthesis model failed to converge for Ci calculation after trying multiple initial guesses.");
+        // Use best available estimate from last attempt
+        bool final_converged = false;
+        Ci = fzero(evaluateCi_Farquhar, variables, &params, 100.0f, final_converged, 0.01f, 500);
+    }
+
+    A = variables[4];
+    limitation_state = (int) variables[5];
+    Gamma = variables[6];
+    J_over_Jmax = variables[8];
+
+    return A;
+}
+
+EmpiricalModelCoefficients PhotosynthesisModel::getEmpiricalModelCoefficients(uint UUID) {
+    return getCoefficientsForPrimitive_Empirical(UUID);
+}
+
+FarquharModelCoefficients PhotosynthesisModel::getFarquharModelCoefficients(uint UUID) {
+    return getCoefficientsForPrimitive_Farquhar(UUID);
+}
+
+void PhotosynthesisModel::disableMessages() {
+    message_flag = false;
+}
+
+void PhotosynthesisModel::enableMessages() {
+    message_flag = true;
+}
+
+void PhotosynthesisModel::optionalOutputPrimitiveData(const char *label) {
+
+    if (strcmp(label, "Ci") == 0 || strcmp(label, "limitation_state") == 0 || strcmp(label, "Gamma_CO2") == 0 || strcmp(label, "electron_transport_ratio") == 0) {
+        output_prim_data.emplace_back(label);
+    } else {
+        if (message_flag) {
+            static bool unknown_output_warning_shown = false;
+            if (!unknown_output_warning_shown) {
+                std::cerr << "WARNING (PhotosynthesisModel::optionalOutputPrimitiveData): unknown output primitive data " << label << std::endl;
+                unknown_output_warning_shown = true;
+            }
+        }
+    }
+}
+
+void PhotosynthesisModel::printDefaultValueReport() const {
+    printDefaultValueReport(context->getAllUUIDs());
+}
+
+void PhotosynthesisModel::printDefaultValueReport(const std::vector<uint> &UUIDs) const {
+
+    size_t assumed_default_i = 0;
+    size_t assumed_default_TL = 0;
+    size_t assumed_default_CO2 = 0;
+    size_t assumed_default_gM = 0;
+    size_t assumed_default_gH = 0;
+
+    size_t Nprimitives = UUIDs.size();
+
+    for (uint UUID: UUIDs) {
+
+        if (!context->doesPrimitiveDataExist(UUID, "radiation_flux_PAR") || context->getPrimitiveDataType("radiation_flux_PAR") != HELIOS_TYPE_FLOAT) {
+            assumed_default_i++;
+        }
+
+        // surface temperature (K)
+        if (!context->doesPrimitiveDataExist(UUID, "temperature") || context->getPrimitiveDataType("temperature") != HELIOS_TYPE_FLOAT) {
+            assumed_default_TL++;
+        }
+
+        // boundary-layer conductance to heat
+        if ((!context->doesPrimitiveDataExist(UUID, "boundarylayer_conductance") || context->getPrimitiveDataType("boundarylayer_conductance") != HELIOS_TYPE_FLOAT) &&
+            (!context->doesPrimitiveDataExist(UUID, "boundarylayer_conductance_out") || context->getPrimitiveDataType("boundarylayer_conductance_out") != HELIOS_TYPE_FLOAT)) {
+            assumed_default_gH++;
+        }
+
+        // stomatal conductance
+        if (!context->doesPrimitiveDataExist(UUID, "moisture_conductance") || context->getPrimitiveDataType("moisture_conductance") != HELIOS_TYPE_FLOAT) {
+            assumed_default_gM++;
+        }
+
+        // ambient air CO2
+        if (!context->doesPrimitiveDataExist(UUID, "air_CO2") || context->getPrimitiveDataType("air_CO2") != HELIOS_TYPE_FLOAT) {
+            assumed_default_CO2++;
+        }
+    }
+
+    std::cout << "--- Photosynthesis Model Default Value Report ---" << std::endl;
+
+    std::cout << "PAR flux: " << assumed_default_i << " of " << Nprimitives << " used default value of " << i_PAR_default
+              << " because "
+                 "radiation_flux_PAR"
+                 " primitive data did not exist"
+              << std::endl;
+    std::cout << "surface temperature: " << assumed_default_TL << " of " << Nprimitives << " used default value of " << TL_default
+              << " because "
+                 "temperature"
+                 " primitive data did not exist"
+              << std::endl;
+    std::cout << "boundary-layer conductance: " << assumed_default_gH << " of " << Nprimitives << " used default value of " << gH_default
+              << " because "
+                 "boundarylayer_conductance"
+                 " primitive data did not exist"
+              << std::endl;
+    std::cout << "moisture conductance: " << assumed_default_gM << " of " << Nprimitives << " used default value of " << gM_default
+              << " because "
+                 "moisture_conductance"
+                 " primitive data did not exist"
+              << std::endl;
+    std::cout << "air CO2: " << assumed_default_CO2 << " of " << Nprimitives << " used default value of " << CO2_default
+              << " because "
+                 "air_CO2"
+                 " primitive data did not exist"
+              << std::endl;
+
+    std::cout << "--------------------------------------------------" << std::endl;
+}

@@ -1,0 +1,850 @@
+/*! \page VisualizerDoc %Visualizer Plugin Documentation
+
+ \image html Visualizer.png
+
+ \tableofcontents
+
+ <table>
+   <tr>	
+      <th>Dependencies</th>
+      <td>X11/xorg (Mac/Linux)</td>
+   </tr>
+   <tr>	
+      <th>CMakeLists.txt</th>
+      <td>set( PLUGINS "visualizer" )</td>
+   </tr>
+   <tr>	
+      <th>Header File</th>
+      <td>#include "Visualizer.h"</td>
+   </tr>
+   <tr>	
+      <th>Class</th>
+      <td>\ref Visualizer</td>
+   </tr>
+ </table>
+
+\section VisDepends Dependencies
+
+ <table>
+ <caption>Installing dependent packages</caption>
+   <tr>	
+      <th>Package</th>
+      <th>\image html apple-logo.png</th>
+      <th>\image html unix-logo.png</th>
+      <th>\image html windows-logo.png</th>
+   </tr>
+   <tr>	
+      <td>X11/xorg</td>
+      <td> ```$ brew install Caskroom/cask/xquartz```<!--X11 libraries are available through the XQuartz project.  <br>Download the latest version of XQuartz at <a href="www.xquartz.org">www.xquartz.org</a>.--></td>
+      <td>Debian/Ubuntu:<br>```$ sudo apt-get install libx11-dev xorg-dev libgl1-mesa-dev libglu1-mesa-dev libxrandr-dev```</td>
+      <td>None (if using Visual Studio)</td>
+   </tr>
+ </table>
+ 
+ \section VisIssues Known Issues
+
+ - **macOS OpenGL Warning in Headless Mode**: When using headless rendering on macOS, you may see a warning like:
+   ```
+   UNSUPPORTED (log once): POSSIBLE ISSUE: unit 6 GLD_TEXTURE_INDEX_2D is unloadable and bound to sampler type (Float) - using zero texture because texture unloadable
+   ```
+   This is a harmless driver warning from the macOS OpenGL implementation and does not affect rendering functionality. It appears once per run and can be safely ignored.
+
+ - Large point clouds are supported with automatic culling optimization.
+
+ \section VisIntro Introduction
+
+ This plugin facilitates visualization of model geometry and data.  It can visualize a number of different geometric shapes, including all of the primitive types supported by the Helios context.  Individual geometric objects can be added though API commands, and there is a command to automatically add all geometric primitives from the Helios context.
+
+ \section VisClass Class Constructor(s)
+
+ <table>
+   <tr>	
+      <th>Constructors</th>
+   </tr>
+   <tr>	
+      <td>\ref Visualizer::Visualizer( uint Wdisplay ) "Visualizer( uint Wdisplay )"</td>
+   </tr>
+   <tr>	
+      <td>\ref Visualizer::Visualizer( uint Wdisplay, uint Hdisplay ) "Visualizer( uint Wdisplay, uint Hdisplay )"</td>
+   </tr>
+ </table>
+ 
+ The class associated with the visualization is called Visualizer. The class constructor takes one or two arguments that specifies the size of the graphics window.  If only one argument is provided (see \ref Visualizer( uint Wdisplay )), the argument is an integer that specifies the width of the diplay window in pixels, with the hight of the window specified according to the default aspect ratio. If two arguments are provided (see \ref Visualizer( uint Wdisplay, uint Hdisplay )), the two arguments correspond respectively to the width and height of the display window in pixels. Below is an example program:
+
+  ~~~~~~{.cpp}
+  #include "Visualizer.h"
+	
+  int main(){
+      Visualizer vis( 1200 ); //Opens a graphics window of width 1200 pixels with default aspect ratio
+  }
+  ~~~~~~
+	
+  \section UseVis Using the Visualizer Plug-in
+
+  \subsection coord Coordinate Systems
+
+  The visualizer uses two types of coordinate systems to specify the locations of points in space during visualization:
+
+  <ol>
+    <li>\ref Visualizer::COORDINATES_WINDOW_NORMALIZED "COORDINATES_WINDOW_NORMALIZED" - Coordinates are normalized to unity and are window-aligned.  The point (x,y)=(0,0) is in the bottom left corner of the window, and (x,y)=(1,1) is in the upper right corner of the window.  The z-coordinate specifies the depth in the screen-normal direction, with values ranging from -1 to 1.  For example, an object at z=0.5 would be behind an object at z=0.  This coordinate system is typically used when annotating visualizations with text, adding watermarks, or adding objects to the dashboard.</li>
+    <li>\ref Visualizer::COORDINATES_CARTESIAN "COORDINATES_CARTESIAN" - Coordinates are specified in a 3D Cartesian system (right-handed), where +z is vertical.  This coordinate system is typically used when adding model geometry or 3D objects.</li>
+  </ol>
+
+  \subsection Window Visualization Window
+
+  In order to actually display a window for visualization, we must issue a comand to plot the geometry.  There are different comands to produce a visualization window depending on the intended output:
+
+  <ul>
+    <li>\ref Visualizer::plotInteractive() "plotInteractive()" - Open an interactive visualization window that allows for user input control.  This type of visualization allows for one to, for example, rotate the view or zoom in/out. This will cause the program to wait until the window is closed by the user to continue.</li>
+    <li>\ref Visualizer::plotUpdate() "plotUpdate()" - Open a window and update it with the current visualization, then continue the program.  This does not allow for any user input, since it continues on without checking for input.  This is useful when generating a large number of visualization images for a movie.  
+  </ul>
+
+  If \ref Visualizer::plotUpdate() "plotUpdate()" is issued, another command \ref Visualizer::printWindow() "printWindow()" can be used to output the current visualization to file (JPEG files only).
+
+  The current window can be closed using the \ref Visualizer::closeWindow() "closeWindow()" command.
+
+  Below is an example of opening a window (blank), exporting its contents to file, then closing the window:
+
+  ~~~~~~{.cpp}
+   #include "Visualizer.h"
+
+   int main(){
+      Visualizer vis( 1200 );
+      vis.plotUpdate(); //we have not added geometry, so window is blank
+      vis.printWindow("blank_window.jpg");
+      vis.closeWindow();
+    }
+  ~~~~~~
+
+ \subsection Headless Headless Rendering
+
+ The Visualizer supports headless rendering for server environments or automated workflows where no display is available. Headless mode enables all visualization and image export functionality without requiring a graphics display or user interaction.
+
+ <b>Enabling Headless Mode:</b>
+
+ Headless mode is enabled through the constructor by setting the `headless` parameter to `true`:
+
+ ~~~~~~{.cpp}
+ #include "Visualizer.h"
+
+ int main(){
+     // Enable headless mode (5th parameter = true)
+     Visualizer vis( 1200, 800, 8, true, true );
+
+     // All visualization functions work normally
+     vis.buildContextGeometry(&context);
+     vis.setCameraPosition( make_vec3(0,0,5), make_vec3(0,0,0) );
+     vis.plotUpdate(true);
+     vis.printWindow("headless_output.jpg");
+ }
+ ~~~~~~
+
+ <b>Key Features:</b>
+ - Full OpenGL rendering using offscreen framebuffers
+ - All geometry types and visual effects supported
+ - Image export via \ref Visualizer::printWindow() "printWindow()" and \ref Visualizer::getWindowPixelsRGB() "getWindowPixelsRGB()"
+ - No display or window manager required
+ - Identical visual output to windowed mode
+
+ <b>Important Notes:</b>
+ - When in headless mode, calling \ref Visualizer::plotUpdate(false) "plotUpdate(false)" (requesting visible window) will issue a warning and continue with offscreen rendering
+ - Always use \ref Visualizer::plotUpdate(true) "plotUpdate(true)" for headless workflows to avoid warnings
+ - \ref Visualizer::plotInteractive() "plotInteractive()" is not available in headless mode
+
+ <b>Use Cases:</b>
+ - Automated visualization pipelines on servers
+ - Batch processing of simulation results
+ - Integration with cloud computing environments
+ - Continuous integration testing of visualization features
+
+ <!-- \subsection Layer Layers
+
+  Objects in the visualizer are grouped into layers.  This allows modification of a given subset of objects by specifying their layer number.  For example, when adding a triangular primitive to the visualizer, a layer number must be specified which is some nonnegative integer. We could then make that layer invisible by issuing the \ref Visualizer::setLayerVisibility "setLayerVisibility" command:
+
+  <div style="padding:0.5px;background-color:#D0D0D0 ;line-height:1.2">
+  <pre><code> vis.setLayerVisibility( 0, false );</code></pre>
+  </div>
+
+  Layers are automatically created as they are referenced.  For example, adding a primitive on layer #1, or making layer #1 visibile would automatically create an additional layer.
+
+-->
+
+  \subsection Background Window background
+
+ The %Visualizer provides multiple options for customizing the window background:
+
+ <b>Default Gradient Background</b>
+
+ By default, the %Visualizer displays a subtle vertical gradient background that transitions from a neutral blue at the bottom to white at the top. This provides a clean, professional appearance without requiring any configuration.
+
+ <b>Solid Color Background</b>
+
+ The window background can be set to a constant color using the \ref Visualizer::setBackgroundColor( const helios::RGBcolor & ) "setBackgroundColor( RGBcolor color )" command:
+
+  ~~~~~~{.cpp}
+   #include "Visualizer.h"
+
+   int main(){
+      Visualizer vis( 1200 );
+      vis.setBackgroundColor( RGB::white );  // Set background to white
+   }
+  ~~~~~~
+
+ <b>Transparent Background</b>
+
+ For creating visualizations with transparent backgrounds (useful for overlaying on other images or presentations), use the \ref Visualizer::setBackgroundTransparent() "setBackgroundTransparent()" command. When rendering to the screen, a checkerboard pattern indicates transparency. When exporting to PNG format via \ref Visualizer::printWindow() "printWindow()", the background will have true alpha channel transparency:
+
+  ~~~~~~{.cpp}
+   #include "Visualizer.h"
+
+   int main(){
+      Visualizer vis( 1200 );
+      vis.setBackgroundTransparent();
+      vis.plotUpdate();
+      vis.printWindow("output.png", "png");  // Saves with transparent background
+   }
+  ~~~~~~
+
+ Note: Transparent backgrounds only work with PNG output format. JPEG output will have an opaque background.
+
+ <b>Custom Image Background</b>
+
+ You can set a custom texture image as the background using the \ref Visualizer::setBackgroundImage( const char* ) "setBackgroundImage( const char* texture_file )" command:
+
+  ~~~~~~{.cpp}
+   #include "Visualizer.h"
+
+   int main(){
+      Visualizer vis( 1200 );
+      vis.setBackgroundImage( "path/to/custom_background.jpg" );
+   }
+  ~~~~~~
+
+ The image will be stretched to fill the window while maintaining the aspect ratio to avoid distortion. Both JPEG and PNG formats are supported.
+
+ <b>Sky Texture Background</b>
+
+ For outdoor scenes, a three-dimensional sky background can be added using the \ref Visualizer::setBackgroundSkyTexture "setBackgroundSkyTexture" command. This creates a dynamically scaling sky sphere that uses shader-based transformations to keep the camera always inside, eliminating the need to manually specify a radius. The sky appears infinitely distant regardless of camera position or zoom level:
+
+  ~~~~~~{.cpp}
+   #include "Visualizer.h"
+
+   int main(){
+      Visualizer vis( 1200 );
+      // Use default sky texture (SkyDome_clouds.jpg)
+      vis.setBackgroundSkyTexture();
+
+      // Or specify a custom texture
+      // vis.setBackgroundSkyTexture( "path/to/custom_sky.jpg" );
+   }
+  ~~~~~~
+
+  The method automatically uses the default sky texture (`plugins/visualizer/textures/SkyDome_clouds.jpg`) if no texture file is specified. The sky can be toggled on/off like other background modes using \ref Visualizer::setBackgroundColor "setBackgroundColor", \ref Visualizer::setBackgroundTransparent "setBackgroundTransparent", or \ref Visualizer::setBackgroundImage "setBackgroundImage".
+
+  \note The older \ref Visualizer::addSkyDomeByCenter "addSkyDomeByCenter" method is deprecated and will be removed in a future version. It required manual specification of radius and center, which could break when zooming out beyond the dome's boundaries. The new \ref Visualizer::setBackgroundSkyTexture "setBackgroundSkyTexture" method provides a more robust solution that works correctly at all zoom levels.
+  
+  \subsection AddGeom Adding Geometry
+
+  Next, we will learn how to add objects to the visualization.  The visualizer supports the following objects:
+  
+ <table>
+   <tr>	
+      <th>Primitive</th>
+      <th>Description</th>
+      <th>Add Functions</th>
+   </tr>
+   <tr>	
+      <td>Rectangle</td>
+      <td>Rectangular polygon with coplanar vertices.</td>
+      <td><ul>
+	  <li>\ref Visualizer::addRectangleByCenter( const helios::vec3 &center, const helios::vec2 &size, const helios::SphericalCoord &rotation, const helios::RGBcolor &color, Visualizer::CoordinateSystem coordFlag )</li>
+	  <li>\ref Visualizer::addRectangleByCenter( const helios::vec3 &center, const helios::vec2 &size, const helios::SphericalCoord &rotation, const helios::RGBAcolor &color, Visualizer::CoordinateSystem coordFlag )</li>
+	  <li>\ref Visualizer::addRectangleByCenter( const helios::vec3 &center, const helios::vec2 &size, const helios::SphericalCoord &rotation, const char* texture_file, Visualizer::CoordinateSystem coordFlag )</li>
+	  <li>\ref Visualizer::addRectangleByCenter( const helios::vec3 &center, const helios::vec2 &size, const helios::SphericalCoord &rotation, const helios::RGBcolor &color, const char* texture_file, Visualizer::CoordinateSystem coordFlag )</li>
+	  <li>\ref Visualizer::addRectangleByVertices( const std::vector<helios::vec3>& vertices, const helios::RGBcolor &color, Visualizer::CoordinateSystem coordFlag )</li>
+	  <li>\ref Visualizer::addRectangleByVertices( const std::vector<helios::vec3>& vertices, const helios::RGBAcolor &color, Visualizer::CoordinateSystem coordFlag )</li>
+	  <li>\ref Visualizer::addRectangleByVertices( const std::vector<helios::vec3>& vertices, const char* texture_file, Visualizer::CoordinateSystem coordFlag )</li>
+	  <li>\ref Visualizer::addRectangleByVertices( const std::vector<helios::vec3>& vertices, const helios::RGBcolor &color, const char* texture_file, Visualizer::CoordinateSystem coordFlag )</li>
+      </td>
+   </tr>
+   <tr>	
+      <td>Triangle</td>
+      <td>Triangular polygon specified by its three vertices.</td>
+      <td><ul>
+	  <li>\ref Visualizer::addTriangle( const helios::vec3 &vertex0, const helios::vec3 &vertex1, const helios::vec3 &vertex2, const helios::RGBcolor &color, Visualizer::CoordinateSystem coordFlag )</li>
+	  <li>\ref Visualizer::addTriangle( const helios::vec3 &vertex0, const helios::vec3 &vertex1, const helios::vec3 &vertex2, const helios::RGBAcolor &color, Visualizer::CoordinateSystem coordFlag )</li>
+      <li>\ref Visualizer::addTriangle( const helios::vec3 &vertex0, const helios::vec3 &vertex1, const helios::vec3 &vertex2, const char* texture_file, const helios::vec2 &uv0, const helios::vec2 &uv1, const helios::vec2 &uv2, Visualizer::CoordinateSystem coordFlag )</li>
+      <li>\ref Visualizer::addTriangle( const helios::vec3 &vertex0, const helios::vec3 &vertex1, const helios::vec3 &vertex2, const char* texture_file, const helios::vec2 &uv0, const helios::vec2 &uv1, const helios::vec2 &uv2, const helios::RGBAcolor &color, Visualizer::CoordinateSystem coordFlag )</li>
+      </ul>
+      </td>
+   </tr>
+   <tr>	
+      <td>Voxel</td>
+      <td>Parallelpiped or rectangular prism.</td>
+      <td><ul>
+	  <li>\ref Visualizer::addVoxelByCenter( const helios::vec3 &center, const helios::vec3 &size, const helios::SphericalCoord &rotation, const helios::RGBcolor &color, Visualizer::CoordinateSystem coordFlag )</li>
+	  <li>\ref Visualizer::addVoxelByCenter( const helios::vec3 &center, const helios::vec3 &size, const helios::SphericalCoord &rotation, const helios::RGBAcolor &color, Visualizer::CoordinateSystem coordFlag )</li>
+	</ul>
+      </td>
+   </tr>
+   <tr>	
+      <td>Sphere</td>
+      <td>Tessellated sphere composed of triangles.</td>
+      <td><ul>
+	  <li>\ref Visualizer::addSphereByCenter( float radius, const helios::vec3 &center, uint Ndivisions, const helios::RGBcolor &color, Visualizer::CoordinateSystem coordFlag )</li>
+	  <li>\ref Visualizer::addSphereByCenter( float radius, const helios::vec3 &center, uint Ndivisions, const helios::RGBAcolor &color, Visualizer::CoordinateSystem coordFlag )</li>
+	</ul>
+      </td>
+   </tr>
+   <tr>	
+      <td>Line</td>
+      <td>Linear segment between two points.</td>
+       <td><ul>
+	  <li>\ref Visualizer::addLine( const helios::vec3 &start, const helios::vec3 &end, const helios::RGBcolor &color, Visualizer::CoordinateSystem coordFlag )</li>
+	  <li>\ref Visualizer::addLine( const helios::vec3 &start, const helios::vec3 &end, const helios::RGBAcolor &color, Visualizer::CoordinateSystem coordFlag )</li>
+	  <li>\ref Visualizer::addLine( const helios::vec3 &start, const helios::vec3 &end, const helios::RGBcolor &color, float linewidth, Visualizer::CoordinateSystem coordFlag )</li>
+	  <li>\ref Visualizer::addLine( const helios::vec3 &start, const helios::vec3 &end, const helios::RGBAcolor &color, float linewidth, Visualizer::CoordinateSystem coordFlag )</li>
+	</ul>
+      </td>
+   </tr>
+   
+   <tr>	
+      <td>Point</td>
+      <td>Single point in 3D space with configurable size.</td>
+      <td><ul>
+	  <li>\ref Visualizer::addPoint( const helios::vec3 &position, const helios::RGBcolor &color, Visualizer::CoordinateSystem coordFlag )</li>
+	  <li>\ref Visualizer::addPoint( const helios::vec3 &position, const helios::RGBAcolor &color, Visualizer::CoordinateSystem coordFlag )</li>
+	  <li>\ref Visualizer::addPoint( const helios::vec3 &position, const helios::RGBcolor &color, float pointsize, Visualizer::CoordinateSystem coordFlag )</li>
+	  <li>\ref Visualizer::addPoint( const helios::vec3 &position, const helios::RGBAcolor &color, float pointsize, Visualizer::CoordinateSystem coordFlag )</li>
+	</ul>
+      </td>
+   </tr>
+    
+   <tr>	
+      <td>Textbox</td>
+      <td>Box of text.</td>
+      <td><ul>
+	  <li>\ref Visualizer::addTextboxByCenter( const char* textstring, const helios::vec3 &center, const helios::SphericalCoord &rotation, const helios::RGBcolor &fontcolor, uint fontsize, const char* fontname, Visualizer::CoordinateSystem coordFlag )</li>
+	</ul>
+      </td>
+   </tr>	
+ </table>
+
+  Each object can be added by calling one of the associated functions listed in the table above.  The syntax is usually fairly similar to how gometry is added in the Helios context, except that you must specify a coordinate system (see \ref coord).
+  
+  The code sample below gives an example of how to add a horizontal rectangle to the visualizer by providing the coordinates of its center:
+
+  ~~~~~~{.cpp}
+   #include "Visualizer.h"
+	
+   int main(){
+      Visualizer vis( 1200 );
+	
+      vec3 center = make_vec3(0,0,0);
+      vec2 size = make_vec2(1,1);
+      SphericalCoord rotation = make_SphericalCoord(0,0);
+      vis.addRectangleByCenter(center, size, rotation, RGB::red, Visualizer::COORDINATES_CARTESIAN);
+   }
+  ~~~~~~
+
+  \subsubsection ContextGeom Automatically importing Context geometry
+
+ The visualizer can automatically import some or all geometry from the Context.  This is accomplished using the \ref Visualizer::buildContextGeometry() command.  To add all primitives in the Context, the \ref Visualizer::buildContextGeometry() command would be issued, which is passed the Context. We can add a subset of the Context geometry through an additional argument which takes a vector of UUID's.
+
+ <table>
+   <tr>	
+      <th>Command</th>
+      <th>Description</th>
+   </tr>
+   <tr>	
+      <td>\ref Visualizer::buildContextGeometry( helios::Context* context_ptr ) "buildContextGeometry( Context* context_ptr )"</td>
+      <td>Add all primitives in the Context to the %Visualizer.</td>
+   </tr>
+   <tr>	
+      <td>\ref Visualizer::buildContextGeometry( helios::Context* context_ptr, const std::vector<uint> &UUIDs ) "buildContextGeometry( Context* context_ptr, std::vector<uint> UUIDs )"</td>
+      <td>Add a subset of primitives in the Context to the %Visualizer.</td>
+   </tr>
+ </table>
+
+  The example below shows how to add all Context geometry to the visualizer.
+
+  ~~~~~~{.cpp}
+   #include "Context.h"
+   #include "Visualizer.h"
+
+   using namespace helios;
+	
+   int main(){
+      Context context;
+
+      vec3 center = make_vec3(0,0,0);
+      vec2 size = make_vec2(1,1);
+      context.addPatch(center,size);
+      
+      Visualizer vis( 1200 );
+
+      vis.buildContextGeometry(&context);
+   }
+  ~~~~~~
+
+  \subsection PointCloudPerf Point Cloud Performance Optimization
+
+  For large point clouds (tens of millions of points), the visualizer includes automatic culling optimization to maintain interactive performance. This feature is enabled by default when the number of points exceeds a configurable threshold.
+
+  \subsubsection PointCulling Point Culling Methods
+
+  The visualizer supports two types of automatic culling:
+
+  <ul>
+    <li><b>View Frustum Culling</b> - Points outside the camera's field of view are automatically excluded from rendering</li>
+    <li><b>Distance-based Culling</b> - Distant points are culled with level-of-detail scaling and adaptive sizing to maintain visual coverage</li>
+  </ul>
+
+  \subsubsection PointCullingConfig Point Culling Configuration
+
+  Point cloud culling can be configured using the following functions:
+
+ <table>
+   <tr>
+      <th>Function</th>
+      <th>Description</th>
+   </tr>
+   <tr>
+      <td>\ref Visualizer::setPointCullingEnabled( bool enabled ) "setPointCullingEnabled( bool enabled )"</td>
+      <td>Enable or disable automatic point culling.</td>
+   </tr>
+   <tr>
+      <td>\ref Visualizer::setPointCullingThreshold( size_t threshold ) "setPointCullingThreshold( size_t threshold )"</td>
+      <td>Set the minimum number of points required to trigger culling optimization.</td>
+   </tr>
+   <tr>
+      <td>\ref Visualizer::setPointMaxRenderDistance( float distance ) "setPointMaxRenderDistance( float distance )"</td>
+      <td>Set the maximum distance for point rendering in distance-based culling.</td>
+   </tr>
+   <tr>
+      <td>\ref Visualizer::setPointLODFactor( float factor ) "setPointLODFactor( float factor )"</td>
+      <td>Set the level-of-detail scaling factor for distant points.</td>
+   </tr>
+   <tr>
+      <td>\ref Visualizer::getPointRenderingMetrics( size_t &total_points, size_t &rendered_points, float &culling_time_ms ) "getPointRenderingMetrics(...)"</td>
+      <td>Retrieve real-time performance metrics including total points, rendered points, and culling computation time.</td>
+   </tr>
+ </table>
+
+  Example code showing how to configure point cloud culling:
+
+  ~~~~~~{.cpp}
+   #include "Visualizer.h"
+	
+   int main(){
+      Visualizer vis( 1200 );
+	
+      // Configure culling for large point clouds
+      vis.setPointCullingEnabled(true);
+      vis.setPointCullingThreshold(1000000); // Enable for point clouds > 1M points
+      vis.setPointMaxRenderDistance(500.0f); // Cull points beyond 500 units
+      vis.setPointLODFactor(10.0f); // Aggressive LOD scaling
+      
+      // Add large point cloud...
+      for(int i = 0; i < 10000000; ++i) {
+          vis.addPoint(make_vec3(random_x, random_y, random_z), RGB::red, 1.0f, Visualizer::COORDINATES_CARTESIAN);
+      }
+      
+      // Check performance metrics
+      size_t total, rendered;
+      float culling_time;
+      vis.getPointRenderingMetrics(total, rendered, culling_time);
+      std::cout << "Rendering " << rendered << "/" << total << " points in " << culling_time << "ms" << std::endl;
+   }
+  ~~~~~~
+
+  \subsection PlotWindow Plotting Geometry
+
+  To this point, we have not actually plotted anything in the %Visualizer window.  A final command is neede to display all of the geometry added to the %Visualizer in the window we have opened.  There are two functions for doing this, which are detailed below.
+
+  \subsubsection PlotInteractive plotInteractive()
+
+ The \ref Visualizer::plotInteractive() function can be used to generate an interactive plot of the geometry in the %Visualizer.  This means that the code will pause to produce the plot/visualization until the window is closed by the user.  The user can interact with the plot by issuing keystrokes to, e.g., zoom.  An example is given below to generate an interactive plot.
+
+  ~~~~~~{.cpp}
+   #include "Context.h"
+   #include "Visualizer.h"
+
+   using namespace helios;
+	
+   int main(){
+      Context context;
+
+      vec3 center = make_vec3(0,0,0);
+      vec2 size = make_vec2(1,1);
+      context.addRectangleByCenter(center,size);
+      
+      Visualizer vis( 1200 );
+
+      vis.buildContextGeometry(&context);
+
+      vis.plotInteractive();
+   }
+  ~~~~~~
+
+  \subsubsection ViewControls View Controls
+
+  In an interactive plot, the view can be modified via the mouse or keyboard. Note that for very large scenes, mouse-based controls may be laggy.
+
+  Mouse camera controls are given by:
+
+<table>
+    <tr>
+        <th>Mouse Button</th>
+        <th>Action</th>
+    </tr>
+    <tr>
+        <td>scroll wheel</td>
+        <td>zoom in/out relative to look-at position</td>
+    </tr>
+    <tr>
+        <td>left mouse button (+drag)</td>
+        <td>rotate camera view about look-at position</td>
+    </tr>
+    <tr>
+        <td>right mouse button (+drag)</td>
+        <td>move look-at position</td>
+    </tr>
+  </table>
+
+  Keyboard camera controls are given by:
+
+ <table>
+   <tr>
+      <th>Key</th>
+      <th>Action</th>
+   </tr>
+   <tr>
+      <td>up arrow</td>
+      <td>increase the viewing elevation angle</td>
+   </tr>
+   <tr>
+      <td>down arrow</td>
+      <td>decrease the viewing elevation angle</td>
+   </tr>
+   <tr>
+      <td>left arrow</td>
+      <td>rotate camera left (clockwise)</td>
+   </tr>
+   <tr>
+      <td>right arrow</td>
+      <td>rotate camera right (counter-clockwise)</td>
+   </tr>
+   <tr>
+      <td>spacebar+up arrow</td>
+      <td>move the camera position upward</td>
+   </tr>
+   <tr>
+      <td>spacebar+down arrow</td>
+      <td>move the camera position downward</td>
+   </tr>
+   <tr>
+      <td>+</td>
+      <td>zoom in</td>
+   </tr>
+   <tr>
+      <td>-</td>
+      <td>zoom out</td>
+   </tr>
+ </table>
+  
+  \subsubsection PlotUpdate plotUpdate()
+
+   The \ref Visualizer::plotUpdate() function simply updates the plot window based on current geometry, and continues on to the next lines of code.  This can be useful if only a still image is to be written to file, as illustrated below.
+
+  ~~~~~~{.cpp}
+   #include "Context.h"
+   #include "Visualizer.h"
+
+   using namespace helios;
+	
+   int main(){
+      Context context;
+
+      vec3 center = make_vec3(0,0,0);
+      vec2 size = make_vec2(1,1);
+      context.addPatch(center,size);
+      
+      Visualizer vis( 1200 );
+
+      vis.buildContextGeometry(&context);
+
+      vis.plotUpdate();
+      vis.printWindow("rectangle.jpg");
+      vis.closeWindow();
+   }
+  ~~~~~~
+
+  \subsection ColorShade Colors and Shading
+  
+  \subsubsection ColoringRGB Coloring by r-g-b code
+
+  The surfaces of primitives are most commonly colored by specifying an r-g-b/r-g-b-a color code when adding the geometry, and thus this is the default behavior.
+
+  \subsubsection ColoringTexture Coloring by texture map
+
+  Rectangles and disks have the cabability of coloring their surface according to a texture map.  A texture map can be specified by providing the path to either a JPEG or PNG image file.  The image will be mapped onto the surface of the primitive element.
+
+  \image html Disk_textured.png
+
+  \subsubsection ColoringPseudo Coloring by pseudocolor map
+
+  Primitives can be colored by mapping associated data values to a color table.  Given some range of data values, each value is normalized by this range and used to look up an associated color in the color table.  The available predefined color tables are shown below.  There is also the capability of defining custom color tables.
+
+ <table>
+   <tr>
+      <th>Enumeration</th>
+      <th>Example</th>
+   </tr>
+   <tr>
+      <td>\ref Visualizer::COLORMAP_HOT</td>
+      <td>\image html colormap_hot.png</td>
+   </tr>
+   <tr>
+      <td>\ref Visualizer::COLORMAP_COOL</td>
+      <td>\image html colormap_cool.png
+   </tr>
+   <tr>
+      <td>\ref Visualizer::COLORMAP_RAINBOW</td>
+      <td>\image html colormap_rainbow.png
+   </tr>
+   <tr>
+      <td>\ref Visualizer::COLORMAP_LAVA</td>
+      <td>\image html colormap_lava.png
+   </tr>
+   <tr>
+      <td>\ref Visualizer::COLORMAP_PARULA</td>
+      <td>\image html colormap_parula.png
+   </tr>
+   <tr>
+      <td>\ref Visualizer::COLORMAP_GRAY</td>
+      <td>\image html colormap_gray.png
+   </tr>
+   <tr>
+      <td>\ref Visualizer::COLORMAP_CUSTOM</td>
+      <td>N/A</td>
+   </tr>
+ </table>
+
+ The colormap to be used is set using the following command \ref Visualizer::setColormap( Visualizer::Ctable ) "setColormap( Ctable colormap_name )", where `colormap_name' is one of the enumerations in the table above.  For example, to set the `hot' colormap one would use:
+
+  ~~~~~~{.cpp}
+   vis.setColormap( Visualizer::COLORMAP_HOT );
+  ~~~~~~
+
+  To set a custom color table, the same command is used with the \ref Visualizer::COLORMAP_CUSTOM argument, plus additional arguments that define the custom color table.  These arguments are 1) a vector of r-g-b colors defining various colors in the color table, and 2) a vector of values between 0 and 1 defining the relative positions of the colors in the table. The first position value must always be 0, and the last value must be 1. The visualizer interpolates between colors to populate the full color table. The table below shows how the `hot' color table is defined:
+
+ <table>
+   <tr>
+      <th>RGBcolor</th>
+      <th>relative position</th>
+   </tr>
+   <tr>
+      <td>(0, 0, 0) <div style="width:50px;height:30px;background-color:rgb(0,0,0);"></div></td>
+      <td>0</td>
+   </tr>
+   <tr>
+      <td>(0.5, 0, 0.5) <div style="width:50px;height:30px;background-color:rgb(127,0,127);"></div></td>
+      <td>0.25</td>
+   </tr>
+   <tr>
+      <td>(1, 0, 0) <div style="width:50px;height:30px;background-color:rgb(255,0,0);"></div></td>
+      <td>0.5</td>
+   </tr>
+   <tr>
+      <td>(1, 0.5, 0) <div style="width:50px;height:30px;background-color:rgb(255,127,0);"></div></td>
+      <td>0.75</td>
+   </tr>
+   <tr>
+      <td>(1, 1, 0) <div style="width:50px;height:30px;background-color:rgb(255,255,0);"></div></td>
+      <td>1</td>
+   </tr>
+ </table>
+
+  Example code on how to implement the color table creation is given below:
+
+  ~~~~~~{.cpp}
+   Visualizer vis(1000);
+
+   std::vector<RGBcolor> ctable_colors;
+   ctable_colors.push_back( make_RGBcolor( 0.f, 0.f, 0.f ) );
+   ctable_colors.push_back( make_RGBcolor( 0.5f, 0.f, 0.5f ) );
+   ctable_colors.push_back( make_RGBcolor( 1.f, 0.f, 0.f ) );
+   ctable_colors.push_back( make_RGBcolor( 1.f, 0.5f, 0.f ) );
+   ctable_colors.push_back( make_RGBcolor( 1.f, 1.f, 0.f ) );
+  
+   std::vector<float> ctable_positions;
+   ctable_positions.push_back( 0.f );
+   ctable_positions.push_back( 0.25f );
+   ctable_positions.push_back( 0.5f );
+   ctable_positions.push_back( 0.75f );
+   ctable_positions.push_back( 1.f );
+	  
+   vis.setColormap( Visualizer::COLORMAP_CUSTOM, ctable_colors, ctable_positions );
+  ~~~~~~
+  
+  \subsubsection Cbar Colorbar
+
+  The colorbar is the legend showing how values are mapped to the color table.  The table below gives functions for customizing colorbar behavior, including for example its position, size, and visibility.
+
+ <table>
+   <tr>
+      <th>Function</th>
+      <th>Description</th>
+   </tr>
+   <tr>
+      <td>\ref Visualizer::enableColorbar( void ) "enableColorbar(void)"</td>
+      <td>Make the colorbar visible.</td>
+   </tr>
+   <tr>
+      <td>\ref Visualizer::disableColorbar( void ) "disableColorbar(void)"</td>
+      <td>Make the colorbar invisible.</td>
+   </tr>
+   <tr>
+      <td>\ref Visualizer::setColorbarPosition( helios::vec3 position ) "setColorbarPosition( vec3 position )"</td>
+      <td>Set the position of the colorbar. Note that position.z gives the depth of the colorbar.</td>
+   </tr>
+   <tr>
+      <td>\ref Visualizer::setColorbarSize( helios::vec2 size ) "setColorbarSize( vec2 size )" </td>
+      <td>Set the size of the colorbar.</td>
+   </tr>
+   <tr>
+      <td>\ref Visualizer::setColorbarRange( float cmin, float cmax ) "setColorbarRange( float cmin, float cmax )" </td>
+      <td>Set the range of data values for the colorbar/colormap.</td>
+   </tr>
+   <tr>
+      <td>\ref Visualizer::setColorbarTicks( const std::vector<float> &ticks ) "setColorbarTicks( const std::vector<float> &ticks )" </td>
+      <td>Set locations of data tick along colorbar.</td>
+   </tr>
+   <tr>
+      <td>\ref Visualizer::setColorbarTitle( const char* title ) "setColorbarTitle( const char* title )" </td>
+      <td>Set the title text displayed above the colorbar.</td>
+   </tr>
+   <tr>
+      <td>\ref Visualizer::setColorbarFontColor( helios::RGBcolor color ) "setColorbarFontColor( RGBcolor color )" </td>
+      <td>Set the color of text in the colorbar.</td>
+   </tr>
+   <tr>
+      <td>\ref Visualizer::setColorbarFontSize( uint font_size ) "setColorbarFontSize( uint font_size )" </td>
+      <td>Set the size of the colorbar text in points.</td>
+   </tr>
+ </table>
+
+  \paragraph auto_ticks Automatic Tick Generation
+
+  When custom ticks are not specified using \ref Visualizer::setColorbarTicks, the visualizer automatically generates tick positions and labels using Heckbert's "nice numbers" algorithm. This algorithm selects tick values that are "clean" multiples of 1, 2, or 5 times a power of 10, making the colorbar easier to read.
+
+  <b>Adaptive Tick Count:</b> The number of ticks is automatically determined based on the colorbar size and font size to prevent overcrowding. Smaller colorbars will have fewer ticks to maintain readability.
+
+  For example:
+  - A colorbar ranging from 0 to 1 will generate ticks at 0.0, 0.2, 0.4, 0.6, 0.8, 1.0
+  - A colorbar ranging from 0 to 600 (with limited space) will generate ticks at 0, 200, 400, 600
+  - A colorbar ranging from 0 to 20 with integer data will generate ticks at 0, 5, 10, 15, 20
+
+  The tick label formatting automatically adapts based on the data type and range:
+  - <b>Integer data</b>: Tick labels are formatted as integers with no decimal places (e.g., 0, 5, 10). For values ≥10,000, scientific notation is used (e.g., 1e+04)
+  - <b>Floating-point data</b>: Tick labels show an appropriate number of decimal places based on the tick spacing (e.g., 0.0, 0.2, 0.4). Scientific notation is used for values ≥10,000 or <0.001
+  - <b>Scientific notation</b>: Automatically used for very large (≥10,000) or very small (<0.001) values to maintain readability
+
+  The data type (integer vs. float) is automatically detected when calling \ref Visualizer::colorContextPrimitivesByData or \ref Visualizer::colorContextPrimitivesByObjectData.
+
+  \image html vineyard_PAR_cmap.png
+  
+  \subsubsection Shading Shading
+
+  To allow for more realistic visualizations, the Phong shading model can be enabled.  The Phong shading model can be enabled with or without shadows.  The shading options and their enumeration for specifying them are detailed in the table below.  The appropriate enumeration is passed to the \ref Visualizer::setLightingModel command to enable the specified shading model.
+
+ <table>
+   <tr>
+      <th>Shading Model</th>
+      <th>Enumeration</th>
+      <th>Example</th>
+   </tr>
+   <tr>
+      <td>No shading is applied.  Objects are colored only according to the r-g-b(-a) color code or texture map.</td>
+      <td>\ref Visualizer::LIGHTING_NONE</td>
+      <td></td>
+   </tr>
+   <tr>
+      <td>Phong shading model</td>
+      <td>\ref Visualizer::LIGHTING_PHONG</td>
+      <td></td>
+   </tr>
+   <tr>
+      <td>Phong shading model with shadows.</td>
+      <td>\ref Visualizer::LIGHTING_PHONG_SHADOWED</td>
+      <td></td>
+   </tr>
+ </table>
+
+  If the Phong shading model is used, the position of the light source should be specified.  This is accomplished through the \ref Visualizer::setLightDirection( const helios::vec3 &direction ) command, which takes a unit vector pointing toward the light source.  The example below shows how to enable the Phong lighting model with shadows, with the light position set according to the position of the sun.
+
+  ~~~~~~{.cpp}
+   #include "Visualizer.h"
+	
+   int main(){
+      Visualizer vis( 1200 );
+	
+      vec3 center = make_vec3(0,0,0);
+      vec2 size = make_vec2(1,1);
+      SphericalCoord rotation = make_SphericalCoord(0,0);
+      vis.addRectangleByCenter(center,size,rotation,RGB::red,Visualizer::COORDINATES_CARTESIAN,0);
+
+      vec3 light_direction = make_vec3(1,1,1);
+
+      vis.setLightingModel( Visualizer::LIGHTING_PHONG_SHADOWED );
+      vis.setLightDirection( light_direction );
+   }
+  ~~~~~~
+
+  \subsection Options View Options
+
+  The default camera position is at an elevation angle of 20 degrees and to the North, with the camera looking toward the origin.  The distance of the camera from the origin is automatically adjusted to fit all primitives in view.
+
+ There are multiple ways of specifying custom camera views.  One method involves specifying the (x,y,z) position of the camera, and the (x,y,z) position that the camera is looking at. This is accomplished using the command \ref Visualizer::setCameraPosition( const helios::vec3 &cameraPosition, const helios::vec3 &lookAt ) "setCameraPosition( vec3 cameraPosition, vec3 lookAt )".
+
+ The other method involves specifying the spherical coordinates of the camera with respect to the (x,y,z) position the camera is looking at.  This is accomplished using the \ref Visualizer::setCameraPosition( const helios::SphericalCoord &cameraAngle, const helios::vec3 &lookAt ) "setCameraPosition( SphericalCoord cameraAngle, vec3 lookAt )".
+
+  \image html CameraSchematic.jpeg
+
+  \section VisAcklowledgements Acknowledgements
+
+ This plug-in uses all or parts of the following open-sourced software libraries:
+
+ The OpenGL Extension Wrangler Library:
+ Copyright (C) 2008-2016, Nigel Stewart <nigels[]users sourceforge net>
+ Copyright (C) 2002-2008, Milan Ikits <milan ikits[]ieee org>
+ Copyright (C) 2002-2008, Marcelo E. Magallon <mmagallo[]debian org>
+ Copyright (C) 2002, Lev Povalahev
+ All rights reserved.
+ 
+ The FreeType Project:
+ Portions of this software are copyright © 2019 The FreeType
+ Project (www.freetype.org).  All rights reserved.
+
+ GLFW:
+ Copyright © 2002-2006 Marcus Geelnard
+ Copyright © 2006-2019 Camilla Löwy
+
+ OpenGL Mathematics (GLM):
+ Copyright (c) 2005 - 2014 G-Truc Creation
+
+ libjpeg:
+ This software is copyright (C) 1991-2016, Thomas G. Lane, Guido Vollbeding.
+ All Rights Reserved except as specified below.
+
+ libpng:
+ Copyright (c) 1995-2019 The PNG Reference Library Authors.
+ Copyright (c) 2018-2019 Cosmin Truta.
+ Copyright (c) 2000-2002, 2004, 2006-2018 Glenn Randers-Pehrson.
+ Copyright (c) 1996-1997 Andreas Dilger.
+ Copyright (c) 1995-1996 Guy Eric Schalnat, Group 42, Inc.
+
+  
+
+*/

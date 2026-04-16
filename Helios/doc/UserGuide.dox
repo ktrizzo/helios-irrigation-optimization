@@ -1,0 +1,2109 @@
+/*! \mainpage Overview
+
+  <p> <br> </p>
+
+  \image html AlmondVarietyReconstruction.png
+
+  <h3> <br><br>
+
+  The Helios simulation system is a versatile modeling framework that handles tasks such as managing geometry and associated data structures through a C++ API.  Plug-ins build on the Helios core engine, and access the geometry and data via the Helios context. The system comes with a visualization plug-in that can produce stunning renderings of model geometry and data with relatively little effort.
+
+  </h3>
+
+  <p> <br></p>
+
+  <h1>System Requirements</h1>
+
+  Helios is compatible with Mac, Linux, and PC platforms. Some plug-ins benefit from or require an NVIDIA GPU. The radiation model uses GPU-accelerated ray tracing, which is supported on all platforms via the <b>Vulkan backend</b> (requires Vulkan SDK). On systems with NVIDIA GPUs, the radiation model can alternatively use the <b>OptiX backend</b> (requires NVIDIA CUDA). The Aerial LiDAR plug-in requires NVIDIA CUDA.
+  
+  <p> <br></p>
+
+  <h1>Downloading the Code</h1>
+
+  The code repository is located at <a href="https://www.github.com/PlantSimulationLab/Helios">https://www.github.com/PlantSimulationLab/Helios</a>. The best way to download it is using "git", which allows you to easily update your code when new updates are available.
+
+  To do so, first install git, then using your command-line interface (e.g. terminal) change into the directory where you want to download the code, then type:
+
+  ~~~~~~
+  git clone https://www.github.com/PlantSimulationLab/Helios
+  ~~~~~~
+
+  <h1>Using Helios with an IDE</h1>
+
+  We recommend using Helios with an IDE such as CLion or Visual Studio Code. Helios can be downloaded and kept up to date directly within the IDE. The YouTube videos below are available below for setting up Helios within an IDE (and via command line).
+
+  \htmlonly
+    <iframe width="560" height="315" src="https://www.youtube.com/embed/rg21UHxR16s?si=lJ7qJDKMF-Mg_WOX" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+
+    <iframe width="560" height="315" src="https://www.youtube.com/embed/pPoAfE69VcI?si=13mwnedvYq_ekuk-" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+  \endhtmlonly
+
+ <p></p>
+
+ <b>NEW</b>: Helios now has a Python API! Please see the [PyHelios API documentation](https://plantsimulationlab.github.io/PyHelios/) for more information.
+
+ <div align="center">
+   <img src="https://raw.githubusercontent.com/PlantSimulationLab/PyHelios/master/docs/images/PyHelios_logo_whiteborder.png"  alt="" width="100" />
+ </div>
+
+ <p> <br><br><br><br> </p>
+
+ <div align="center">
+    \image html doc/images/PSL_logo_compact.png
+ </div>
+
+  <!--
+  <p> <br><br> </p>
+
+  Financial support provided by:
+
+  \image html doc/images/sponsors.jpg
+  -->
+
+  <p> <br><br> </p>
+
+  Acknowledgement of third-party software:
+
+  The Helios core engine uses all or parts of the following third-party open-sourced software libraries:
+
+  libpng:
+  Copyright (c) 1995-2019 The PNG Reference Library Authors.
+  Copyright (c) 2018-2019 Cosmin Truta.
+  Copyright (c) 2000-2002, 2004, 2006-2018 Glenn Randers-Pehrson.
+  Copyright (c) 1996-1997 Andreas Dilger.
+  Copyright (c) 1995-1996 Guy Eric Schalnat, Group 42, Inc.
+
+  pugixml:
+  Copyright (c) 2006-2018 Arseny Kapoulkine
+
+  zlib:
+  Copyright (C) 1995-2004 Jean-loup Gailly and Mark Adler
+
+  Plug-ins may use other third-party software, which is acknowledged in their documentation pages.
+  
+*/
+
+/*! \page "Overview" Introduction
+
+  \tableofcontents
+
+  \section whatisAPI What is an API?
+  
+  Helios is a C++ application programming interface (API) that provides libraries to help with writing programs related to 3D simulation of physical processes. This means that Helios itself is not a program that the user runs, rather it is a set of libraries that are incorporated into the program that a user writes. To read more about APIs, see <a href="https://en.wikipedia.org/wiki/Application_programming_interface">en.wikipedia.org/wiki/Application_programming_interface</a>.
+
+  The Helios API consists of many C++ <a href="https://en.wikipedia.org/wiki/C%2B%2B_classes">classes</a> and <a href="http://www.cplusplus.com/doc/tutorial/functions/">functions</a>, which are accessible within a C++ program by 1) including the appropriate header file in the program, and 2) linking to the appropriate library at build/compile time. Specific examples of how this is done are given in the \ref Tutorials and elsewhere in the documentation.
+
+  \section Prereqs C++ Prerequisites
+
+  Users need only a basic understanding of how to write and run simple C++ programs. Becoming an expert C++ programmer is not necessary to use Helios. In addition to knowing how to write a basic program in C, there are only a relatively few number of C++ constructs that the user must be familiar with. A general list of these are given below, along with links to good tutorials on how to get started.
+
+  - Programs/Namespaces: <a href="https://www.youtube.com/watch?v=SWZfFNyUsxc&list=PLAE85DE8440AA6B83&index=2">YouTube tutorial</a>, <a href="http://www.cplusplus.com/doc/tutorial/namespaces/">cplusplus.com</a>
+  - Functions: <a href="https://www.youtube.com/watch?v=bsWWHo4KDHE">YouTube tutorial</a>, <a href="https://www.youtube.com/watch?v=3pAWJ40I1QE&list=PL318A5EB91569E29A&index=11">YouTube tutorial</a>
+  - For Loops: <a href="https://www.youtube.com/watch?v=sBO8yvyyBI0&index=22&list=PLAE85DE8440AA6B83">YouTube tutorial</a>
+  - Arrays/Vectors: <a href="https://www.youtube.com/watch?v=1kLw8kZuccQ&list=PLAE85DE8440AA6B83&index=32">YouTube tutorial (arrays)</a>, <a href="https://www.youtube.com/watch?v=Cq1h1KPoGBU">YouTube tutorial (vectors)</a>
+  - Classes/Structures:<a href="https://www.youtube.com/watch?v=ABRP_5RYhqU&index=12&list=PLAE85DE8440AA6B83">YouTube tutorial</a>
+  - Pointers: <a href="https://www.youtube.com/watch?v=Fa6S8Pz924k&list=PLAE85DE8440AA6B83&index=38">YouTube tutorial</a>
+
+  \section PrereqsHelios Helios Prerequisites
+
+  Before beginning, you will want to familiarize yourself with Helios vector types, which are commonly used in specifying function arguments. These are C++ structures that have two or more data members. For example, a \ref helios::vec3 type has three floating point members: x, y, z. A vec3 is commonly used to represent a Cartesian point in space. More comprehensive information on available vector types is given in Section \ref VecTypes and \ref context_vectors_tutorial.
+
+  It may be useful to familiarize yourself with <a href="https://en.wikipedia.org/wiki/Spherical_coordinate_system">spherical coordinate systems</a>, which is how rotation angles are typically specified. It may also be helpful to familiarize yourself with the <a href="https://en.wikipedia.org/wiki/RGB_color_space">RGB color model</a>, which is how custom colors are specified.
+
+  \section ModelGeom Model Geometry and Data
+
+  Geometry to be modeled is represented through one or more simple geometric shapes called primitives. Available primitives are triangles, rectangles (patches) and voxels (see \ref Geom for more details). Using this set of simple geometric elements, nearly any object can be represented by combining elements.
+
+  The basic idea behind Helios is that each primitive element is associated with a set of data, and models are written that operate on this data. This geometry and associated data is what couples models. For example, if we are interested in modeling radiation, each primitive may have data associated with radiative properties such as emissivity, reflectivity, etc. The radiation model would then take that data, along with data that defines the primitive geometry (e.g., position, size), and use that to compute a radiative flux for the individual element.
+
+  \section ContextOverview The Helios Context
+
+  The Context is the primary C++ <a href="https://en.wikipedia.org/wiki/C%2B%2B_classes">class</a> in Helios that is used by every program. It contains many <a href="https://www.tutorialspoint.com/cplusplus/cpp_functions.htm">functions</a> associated with model geometry and data.
+
+  You can think of the Context as a package of data, which has many functions that allows you to interface with that data. The Context is used to add model geometry, read/write data associated with that geometry, and manage other model data such as timeseries.  The Context is illustrated graphically in the figure below. In the example depicted, the Context contains three primitives - a triangle and two patches - each of which is associated with various types of data (emissivity, temperature, etc.). 
+
+  \image html images/Context_sketch.png
+
+  \section PluginsOverview Model Plug-ins
+
+  The Context itself does not do any modeling. It only contains information about model geometry and data. Model plug-ins are C++ classes that operate on data contained in the Context to compute some set of values. The figure above illustrates this graphically. A model plug-in is usually given a <a href="http://www.cplusplus.com/doc/tutorial/pointers/">pointer</a> to the Context, and the model uses that pointer to access functions associated with the context. For example, a model plug-in may want to access the position of a given primitive, or the temperature associated with a primitive, which it would do by calling a Context function. Generally, a model plug-in class has several member functions that perform tasks such as setting model inputs or running the model. When a model runs, it usually creates some additional data in the Context for each primitive based on model outputs.
+
+  \section DocOverview Using the Documentation
+
+  All classes and member functions are documented, and can be searched using the search bar in the upper right-hand corner of the documentation. For example, you may come across a function where you are unsure of the order or meaning of arguments. Simply type in the name of the function in the search bar, and you will be taken to a description of the function and all argument definitions.
+
+  To continue from here, you may prefer to learn by example using the \ref Tutorials. More detailed explanations of Helios features can be found throughout the User's Guide.
+
+*/
+
+
+
+
+/*! \page "PlugIns" Plug-ins
+
+  Links to the documentation for plug-ins are given below. The documentation for plug-ins have several common elements that tell you what is needed to run them. 
+
+  1. Dependencies: Any dependent packages that need to be installed before using the plug-in.
+  2. Build: Reference to the plug-in within the project CMakeLists.txt file.
+  3. Header: The relevant header file that must be included in your program to use the plug-in.
+  4. Class: C++ class associated with the plug-in and the class constructor(s).
+  5. Usage: Explanation of plug-in member functions for performing various tasks related to the plug-in. In general, these explanations will comprise the majority of the plug-in documentation.
+
+  - \subpage AerialLiDARDoc "Aerial LiDAR: Processing and visualizing aerial LiDAR data"
+  - \subpage BLConductanceDoc "Boundary-Layer Conductance: Perform boundary-layer conductance model calculations based on several possible models."		
+  - \subpage CanopyGeneratorDoc "Canopy Generator: Simple generation of different type of plant and canopy geometries."
+  - \subpage EnergyBalanceDoc "Energy Balance Model: Surface energy balance solution"
+  - \subpage LeafOpticsDoc "Leaf Optics: Implementation of the PROSPECT-PRO leaf optical model of leaf reflectance and transmittance spectra."
+  - \subpage LiDARDoc "LiDAR: Processing and visualizing terrestrial LiDAR data"
+  - \subpage ParameterOptimizationDoc "Parameter Optimization: Utility for optimization of model parameters."
+  - \subpage PhotosynthesisDoc "Photosynthesis Model: Photosynthetic assimilation model"
+  - \subpage PlantArchitectureDoc "Plant Architecture: Flexible procedural plant generation with dynamic growth and phenology."
+  - \subpage PlantHydraulicsDoc "Plant Hydraulics: Models the water potentials, water contents, hydraulic conductances, and hydraulic capacitances."
+  - \subpage ProjectBuilderDoc "GUI and XML interface for creating and running Helios projects."
+  - \subpage RadiationDoc "Radiation Model: GPU-accelerated ray-tracing radiation transport model (all platforms via Vulkan; NVIDIA systems via OptiX)"
+  - \subpage SolarPositionDoc "Solar Position Model: Model for the position of the sun in the sky, as well as models of solar radiation flux and longwave flux from the sky."
+  - \subpage StomatalDoc "Stomatal Conductance Model: Model for the conductance of water vapor through stomatal pores"
+  - \subpage VisualizerDoc "Visualizer: visualization of model geometry and data"
+
+  - \subpage WeberPennDoc "Weber-Penn Tree: Procedural tree architecture generation"
+
+*/
+
+
+
+  
+
+/*! \page DependentSoftware Install and Set-up
+
+  \tableofcontents
+
+  \htmlonly
+    <iframe width="560" height="315" src="https://www.youtube.com/embed/rg21UHxR16s?si=lJ7qJDKMF-Mg_WOX" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+
+    <iframe width="560" height="315" src="https://www.youtube.com/embed/pPoAfE69VcI?si=13mwnedvYq_ekuk-" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+  \endhtmlonly
+
+  This page will guide you through installation and set-up of dependent software needed to build and run Helios-based programs.
+
+  \section WhichPlatform Which platform to use for Helios programming?
+
+  As Helios is simply C++ code, it can be used on any platform that supports C++ programming. If you prefer to use an interactive development environment (IDE), two great options are <a href="https://www.jetbrains.com/clion/">CLion</a> by JetBrains (recommended) and <a href="https://code.visualstudio.com">VS Code</a>. These IDEs are available on Windows, Linux, and Mac, and make setting up Helios projects relatively easy. CLion is free for educational purposes, and is loaded with very nice features for C++ development such as direct display of Helios documentation. VS Code also works, but is a little more clunky. Building and compiling from the command-line and using any text editor such as Vim or Emacs also works just fine.
+
+  \subsection Automatically Installing Helios Dependencies
+
+  Running Helios requires several dependent packages to be installed, depending on the plug-ins you are using. The sections below detail manual installation of dependent packages for Windows, Linux, and MacOS.
+
+  For Linux and MacOS, there is also a script that can be used to install all required packages for all plugins automatically, simply run the following shell script 'utilities/dependencies.sh' with the argument "ALL" (or with no arguments) as follows: `source dependencies.sh`
+
+  There are a few additional options for installing dependencies if it is not necessary to use all plugins.
+
+  To install only the dependencies required to run Helios with no plugins (or plugins that require no packages), use the argument "BASE": `source dependencies.sh BASE`
+
+  To install only the dependencies required to run Helios with the visualizer plugin, use the argument "VIS": `source dependencies.sh VIS`
+
+  To install only the dependencies required to run Helios with CUDA (required for the Aerial LiDAR plugin, and optional for the Radiation plugin when using the OptiX backend on NVIDIA systems), use the argument "CUDA": `source dependencies.sh CUDA`
+
+  \section SetupPC Set-up on Windows PC
+
+  \subsection SetupPCMSVC Install Microsoft Visual Studio C++ compiler tools
+
+  Download and install Microsoft Visual Studio Community 2022 if your GPU has compute capability of 5 or higher. You can look up your GPU's compute capability here. If your compute capability is less than 5, you'll need to download Visual Studio Community 2019 and CUDA 10.2 to ensure compatibility. The link to download older versions of Visual Studio is here: <a href="https://visualstudio.microsoft.com/vs/older-downloads/">https://visualstudio.microsoft.com/vs/older-downloads/</a>. It will require that you <a href="https://visualstudio.microsoft.com/dev-essentials/">join the free Dev Essentials program</a> in order to access the old downloads. Once you have reached the downloads page, Download Visual Studio Community 2019. For more information on choosing your compiler version, consult \ref chooseCUDA "this page".
+
+  Once you have successfully downloaded the EXE install file, you can run it to perform the installation. The important step is to be sure to install the optional packages for C++ Desktop Development. The figure below shows the check box to enable. When the installer finishes, there is no need to actually open Visual Studio, and you can move on to the next step.
+
+  \image html MSVC_cpp_options.png
+
+  \subsection SetupPCCLion Setting up basic build functionality
+
+  It is recommended for PC that you download and install the CLion IDE, found here: <a href="https://www.jetbrains.com/clion/download/#section=windows">https://www.jetbrains.com/clion/download/#section=windows</a>. Refer to the documentation page \ref CLionIDE for information on how to get a free education license.
+
+  When you open CLion, it will prompt you to open a project. You can have it automatically pull the Helios code from GitHub by clicking on the icon labeled "from VCS". By default, it should bring up Git as the default version control system. You may need to install Git, which can be done by simply clicking the button to download and install. Then, type in the URL for the Helios GitHub repository "https://www.github.com/PlantSimulationLab/Helios", select the directory where you'd like the Helios source code to be located, and hit "Clone". This should give you a fresh copy of Helios within CLion with the README file displayed.
+
+  The next step is to set up the Microsoft Visual Studio C++ compiler in CLion. It may automatically open up a new project wizard, but you can also do it yourself by going to File->Settings, then in the left pane, go to "Build, Execution, Deployment->Toolchains". With any luck, it should automatically add and detect Microsoft Visual Studio. If it doesn't, click the "+" icon and click on "Visual Studio". It may also detect and use MinGW as the default toolchain. It is recommended to remove this toolchain by clicking on it and then the '-' button.
+
+  We then want to change the "Architecture" to "x64" to build in 64-bit mode. Note that this will likely not be an option in the drop-down menu, but you can just type it in. If you do not get the green check boxes and a successful auto-detection as shown below, there is a good chance that you did not install Visual Studio correctly, and you missed the step to enable C++ tools.
+
+  \image html CLion_MSVC_setup.png
+
+  The last step is to verify the build settings by clicking on the next option down from "Toolchains" which is "CMake". Under "Toolchain" verify that it is using Visual Studio as shown below. Next, under the "Generator" drop-down choose "NMake Makefiles". If it says "default: NMake Makefiles", it is a good idea to select the dropdown and explicitly choose "NMake Makefiles" because this can sometimes be automatically changed to "Ninja" without warning.  Note that prior to CLion v2021.3 there is no Generator drop-down, but it should use NMake Makefiles by default.
+
+  \image html CLion_generator_setup.png
+
+  That should be all that is needed to build basic programs that do not require CUDA. You can test by building the context\_selftest project in the "samples" directory. In the left "Project" pane (main CLion window), expand the "samples" folder, and the subdirectory called "context\_selftest". Right-click on the CMakeLists.txt file in that directory and select "Load CMake Project". You should then be able to compile and run it by clicking the play icon in the upper right hand corner of the CLion window. If you get build errors that have the word "Ninja" in various places, you missed the previous step changing the Generator to "NMake Makefiles".
+
+  \subsection SetupPCCUDA Setting up NVIDIA CUDA
+
+  The NVIDIA CUDA library is required to build the Aerial LiDAR plugin. For the radiation model, CUDA enables the OptiX backend (which is the preferred backend on NVIDIA systems), but is not required if you use the Vulkan backend instead. Consult this page for help choosing the right CUDA version based on your C++ compiler and GPU compute capability: \ref ChoosingCUDA.
+
+  \note <b>Install Visual Studio before the CUDA Toolkit.</b> The CUDA installer copies MSBuild integration files (<tt>.props</tt>, <tt>.targets</tt>, <tt>.xml</tt>) into Visual Studio's <tt>BuildCustomizations</tt> directory. If Visual Studio is not installed first, these files are placed only in the CUDA Toolkit directory and CMake will fail with "No CUDA toolset found." If you have already installed CUDA before Visual Studio, you can fix this by reinstalling the CUDA Toolkit (or by manually copying the files from <tt>C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v1X.X\\extras\\visual_studio_integration\\MSBuildExtensions\\</tt> into your Visual Studio <tt>BuildCustomizations</tt> directory).
+
+  The latest CUDA version can be downloaded here: <a href="https://developer.nvidia.com/cuda-downloads">https://developer.nvidia.com/cuda-downloads</a> (note that if you installed Visual Studio 2019 instead of 2022, you'll need to install CUDA 10.2 instead of the latest version). Download the base CUDA Toolkit installer for your Windows OS. Installing from the "exe (network)" type will result in a smaller file being downloaded. Click through the installer and accept all the default options. By default, it should have installed to 'C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v1X.X\\', where v1X.X is the version that you installed. You can verify this installation location using the file browser.
+
+  In order to use CUDA within CLion, you need to tell it where to find the CUDA toolkit. To do this, open up the settings in CLion, and go to "Build, Execution, Deployment" and then to CMake. Click the icon next to the "Environment" field to edit environmental variables. Find the variable named "Path", and double click to edit it. At the end of the list of directories, add the path to the CUDA bin folder, i.e., 'C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v1X.X\\bin;'. Make sure there is a semicolon before and after the path, and that you replace the v1X.X with your actual CUDA version. It is important to hit the return key, which should cause the Path variable list to turn blue. When you hit OK, the Path variable should be listed under the Environment field.
+
+  Once that is done, you can test it by building and running the self-test for a CUDA-based plug-in such as the energy balance model following similar steps above for the context\_selftest. If you get a CMake error that asks you to 'Specify CUDA_TOOLKIT_ROOT_DIR', it can't find your CUDA install, and most likely you set the "Path" variable incorrectly.
+
+  \subsubsection TdrDelay Increasing Timout Detection (TDR) Delay
+
+  The Windows timeout detection (TDR) mechanism can erroneously detect that the GPU has stopped responding while it is performing calculations, resulting in a "Display driver stopped responding and has recovered" error.  The TDR can be disabled by following the instructions here: <a href="https://docs.nvidia.com/deploy/pdf/CUDA_TDR_delay.pdf">https://docs.nvidia.com/deploy/pdf/CUDA_TDR_delay.pdf</a>. The instructions are also given below:
+
+  1. Open the registry editor by typing "regedit" in the Windows search bar.
+  2. Navigate to the following registry subkey: HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers.
+  3. If the TdrDelay key does not exist, right-click the GraphicsDrivers key, select New, and then select DWORD (32-bit) Value. Name the new value TdrDelay.
+  4. Double-click TdrDelay and add 600 for the Value data and make it a Decimal (instead of Hexadecimal). Click OK. If you encounter the same "Display driver stopped responding and has recovered" error in the future, increase the value.
+  5. Close the registry editor and restart the computer for the changes to take effect.
+
+  \subsubsection OptiXWSL Running OptiX under Windows Subsystem for Linux (WSL)
+
+  Both the OptiX 8.1 and OptiX 6.5 backends are bundled with Helios and do not require a separate OptiX SDK installation. The OptiX runtime is loaded from the NVIDIA driver at runtime via <tt>optixInit()</tt>, so as long as the NVIDIA driver is installed in WSL, no additional steps are needed.
+
+  If you encounter issues finding the NVIDIA driver inside WSL, run the dependencies script in the utilities/ folder:
+
+  <tt>source dependencies.sh</tt>
+
+  This will automatically install and configure the Linux driver components needed to run CUDA and OptiX inside WSL.
+
+  \subsection SetupPCVulkan Setting up Vulkan for the Radiation Model
+
+  The radiation model uses GPU-accelerated ray tracing via the Vulkan compute backend, which works natively on Windows through standard GPU drivers (NVIDIA, AMD, and Intel all include Vulkan support in their drivers). The required development libraries are distributed as a single installer from LunarG.
+
+  Download and run the <a href="https://vulkan.lunarg.com/sdk/home">LunarG Vulkan SDK</a> installer for Windows, accepting the default options. The SDK includes the Vulkan headers, the Vulkan loader, and the <tt>glslangValidator</tt> shader compiler required to build Helios shaders.
+
+  \note After installation, you must <b>restart any open terminals and IDEs</b> (including CLion) before CMake can detect the SDK. The installer sets a <tt>VULKAN_SDK</tt> environment variable that is only visible to processes launched after the install completes. You can verify the installation by opening a new PowerShell window and running <tt>glslangValidator --version</tt>.
+
+  After restarting, CMake will automatically detect the Vulkan SDK via the <tt>VULKAN_SDK</tt> environment variable and enable the Vulkan backend when building the radiation plugin. No additional configuration is required.
+
+  \note If you experience a "Display driver stopped responding and has recovered" error during long radiation simulations, increase the Windows TDR delay as described in \ref TdrDelay. This affects GPU compute workloads including the Vulkan backend, not just CUDA.
+
+  \section SetupLinux Set-up on Linux
+
+  \subsection SetupLinuxCLion Setting up basic build functionality
+
+  If you are using the CLion IDE, you will at a minimum need to ensure that Git is installed on your system.  Simple command-line tools are available to easily install dependent software libraries.  The appropriate commands will be given in the documentation to install any required libraries. For Linux systems, the apt-get command can be used, which comes pre-installed.
+
+  Git: It is recommended to install Git in order to facilitate easy download and updating of the Helios source software. This can be accomplished via the command line "sudo apt-get install git". Note that currently CLion does not have an option to automatically install Git like on Windows or MacOS.
+
+  When you open CLion for the first time, or by going to "File->New->Project from Version Control", the default Version Control system should be Git. Type in the URL for the Helios GitHub repository: "https://www.github.com/PlantSimulationLab/Helios", select the directory where you'd like the Helios source code to be located, and hit "Clone".
+
+  If you are opening CLion for the first time, it should also open up a Toolchain Wizard window (or you can find it by going to "File->Preferences->Build, Execution, Deployment->Toolchains". It should automatically pick up Make and the C/C++ compilers if they come pre-installed on your system. If they are not auto-detected, you can install them from the Terminal command line: "sudo apt-get install cmake gcc g++".
+
+  Next, click on the "CMake" tab below Toolchains and be sure the "Generator" drop-down is set to "Unix Makefiles" and NOT Ninja or Default. You can also change the Build directory if you like, such as to simply be "build".
+
+  Once these have been installed at the system level, this is everything you will need to build basic Helios programs that do not use CUDA-based plug-ins or the Visualizer. If you are not using CLion, you can install git, cmake, gcc, and g++ from the command-line and build/compile using commands as detailed in the main Helios User Guide.
+
+  \subsection SetupLinuxCUDA Setting up NVIDIA CUDA
+
+  The NVIDIA CUDA library is required to build the Aerial LiDAR plugin. For the radiation model, CUDA enables the OptiX backend (preferred on NVIDIA systems), but is not required if you use the Vulkan backend instead. While CUDA can be installed on Linux via apt-get, this tends to often cause problems. It has proven more robust to simply download CUDA from the NVIDIA website and run the installer. Consult this page for help choosing the right CUDA version based on your C++ compiler and GPU compute capability: \ref ChoosingCUDA.
+
+  Note that individual plugins may have their own library dependencies.  Consult their documentation for dependency information. The latest CUDA version can be downloaded here: <a href="https://developer.nvidia.com/cuda-downloads">https://developer.nvidia.com/cuda-downloads</a>. However, you'll want to be sure that the version of CUDA that you install works with your compiler version. This website has a table showing compatibility for all versions: <a href="https://gist.github.com/ax3l/9489132">https://gist.github.com/ax3l/9489132</a>, check the g++ column. To figure out which version of g++ you have, you can type the command "g++ --version".
+
+  The Linux installation guide for the latest version of CUDA can be found here: <a href="https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html">https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html</a>. If you are installing an older version, you can find its Linux installation guide within the documentation for that specific version. Note also that Table 1 gives gcc/g++ compiler compatibility information.
+
+  Probably the easiest installation approach is to use the runfile installer type. When you choose this option on the downloads page, it will give you two commands to run the installer: 1) a 'wget' command to download the installer, 2) the command to run the downloaded installer. Complete instructions can be found in <a href="https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html#runfile">Section 7</a> of the latest Linux install guide. Note that  one of the steps is disabling the Nouvou graphics drivers, which disables the "free" graphics driver that may be on your system and can conflict with the NVIDIA driver.  This can be done in a few easy commands:
+
+  1. echo blacklist nouveau > /etc/modprobe.d/blacklist-nvidia-nouveau.conf
+  2. echo options nouveau modeset=0 >> /etc/modprobe.d/blacklist-nvidia-nouveau.conf
+
+  A restart is then needed. It is usually a good idea to install the graphics driver that comes with the CUDA installer to avoid incompatibility issues.
+
+  \subsection SetupLinuxVulkan Setting up Vulkan for the Radiation Model
+
+  The radiation model uses GPU-accelerated ray tracing via the Vulkan compute backend. On Linux, the required libraries can be installed directly from the system package manager. You need the Vulkan development libraries and the <tt>glslangValidator</tt> shader compiler:
+
+  ~~~~~~
+  sudo apt-get install libvulkan-dev glslang-tools
+  ~~~~~~
+
+  After installing, CMake will automatically detect the Vulkan SDK and enable the Vulkan backend when building the radiation plugin. No additional configuration is required. You can verify the installation by running <tt>glslangValidator --version</tt>.
+
+  \note On NVIDIA systems, the proprietary NVIDIA driver (installed with CUDA or separately) provides the Vulkan runtime. On AMD or Intel systems, install the appropriate Mesa Vulkan driver (e.g., <tt>mesa-vulkan-drivers</tt>).
+
+  \subsection SetupLinuxVis Dependencies of the Visualizer Plug-in
+
+  The last set of dependent packages you are likely to encounter are related to the Visualizer plug-in. A single apt-get command is listed in the Visualizer documentation to install these dependent packages.
+
+  \section SetupMac Set-up on Mac
+
+  \subsection SetupMacCLion Setting up basic build functionality
+
+  CLion provides the ability to install all required dependent software (except for CUDA, see below) directly from the IDE. When you open CLion for the first time, or by going to "File->New->Project from Version Control", the default Version Control system should be Git, and it should prompt you to install git along with XCode. Follow the prompts to do so, but if it fails you can also install XCode from the App Store. Type in the URL for the Helios GitHub repository: 'https://www.github.com/PlantSimulationLab/Helios', select the directory where you'd like the Helios source code to be located, and hit "Clone".
+
+  If you are opening CLion for the first time, it should also open up a Toolchain Wizard window (or you can find it by going to "CLion->Preferences->Build, Execution, Deployment->Toolchains". It should automatically pick up Make and the C/C++ compilers if you have XCode installed.
+
+  Next, click on the "CMake" tab below Toolchains and be sure the "Generator" drop-down is set to "Unix Makefiles" and NOT Ninja or Default. You can also change the Build directory if you like, such as to simply be "build".
+
+  Once these have been installed at the system level, this is everything you will need to build basic Helios programs that do not use the Visualizer.
+
+  If you are not using CLion, you can install and run everything you need from the command-line. Simple command-line tools are available to easily install dependent software libraries.  The appropriate commands will be given in the documentation to install any required libraries. For Mac OSX, <a href="https://brew.sh">homebrew</a> is a great package installer.  Homebrew itself can be installed via a single command:
+
+  ~~~~~~
+  $ /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+  ~~~~~~
+
+  Git: It is recommended to install Git in order to facilitate easy download and updating of the Helios source software. This can be accomplished via the command line "brew install git".
+
+  CMake: Components of Helios are compiled using the CMake package (<a href="www.cmake.org">www.cmake.org</a>).  Version 3.15+ is required.  CMake can be easily installed via the command line using homebrew "brew install cmake".
+
+  C/C++ Compiler: You will also need a C/C++ compiler installed - we recommend using the GNU compilers or the AppleClang compilers.  The GNU compilers can easily be installed via the command line "brew install gcc".
+
+  \subsection SetupMacVulkan Setting up Vulkan for the Radiation Model
+
+  The radiation model uses GPU-accelerated ray tracing via the Vulkan compute backend, which is supported on macOS through <a href="https://github.com/KhronosGroup/MoltenVK">MoltenVK</a> (a Vulkan implementation on top of Metal). Install the required Vulkan libraries with Homebrew:
+
+  ~~~~~~
+  brew install vulkan-headers vulkan-loader molten-vk glslang
+  ~~~~~~
+
+  After installing, CMake will automatically detect the Vulkan SDK and enable the Vulkan backend when building the radiation plugin. No additional configuration is required.
+
+*/
+	
+/*! \page API User/API Guide
+  
+  \tableofcontents
+
+  <!-- ************* BUILDING AND COMPILING ************* -->
+
+  \section BuildCompile Building and Compiling Your Own Projects
+
+  \subsection DirStruct Basic Directory Structure
+
+  Projects that use the Helios API can be located in any directory, and simply need to reference the location of the source code and plug-ins.  Typically, the project directory contains the following files and directories (see 'samples' directory for examples):
+
+  <ul>
+    <li>'build' directory.
+    <li>.cpp file containing a main() routine, and other auxiliary .cpp files.</li>
+    <li>CMakeLists.txt file, which is used to generate a makefile (see next section).</li>
+    <li>.h header files (optional).</li>
+  </ul>
+
+  A prototypical directory structure for a project folder is given below:
+
+  <ul>
+    <li> build (directory) </li>
+      <ul>
+	<li> executable </li>
+      </ul>
+    <li> CMakeLists.txt </li>
+    <li> main.cpp </li>
+  </ul>
+
+  \subsection BuildDir Build Directory
+
+  It is generally convenient to have a separate directory in which the project is built.  This makes it easy to start fresh with a new build, or create multiple builds on different systems.  Usually, the build directory is a subdirectory within the project directory (see 'samples' directory for examples).
+  
+  \subsection Source Main and auxiliary .cpp files
+
+  Projects using the Helios API must have a file containing a main() program, and can have any number of complimentary routines and files.  Generally, the file containing the main program will include the Context.h header file, and declare the Context class (see Sect. \ref ContextSect below). 
+    
+  \subsection CMake CMakeLists.txt File
+  
+  Projects that use the Helios API are typically built using the CMake package a CMakeLists.txt file.  Helios requires CMake version 3.15+. A prototypical CMakeLists.txt file used for building Helios samples and projects is given in the code sample below.  Inputs for the specific case are entered in the top block of code by setting variables (see the CMake 'set' command reference).  The user sets the location of the Helios base directory, the name of the executable file, any source or header files, and a list of plug-ins to use (the example below uses the 'visualizer' plug-in). The last line in the file references another file in the core/ directory that contains additional code for setting up the project.
+
+  ```
+  # Helios standard CMakeLists.txt file version 1.10
+  cmake_minimum_required(VERSION 3.15)
+  project(helios)
+
+  #-------- USER INPUTS ---------#
+
+  #provide the path to Helios base directory, either as an absolut path or a path relative to the location of this file
+  set( BASE_DIRECTORY "../.." )
+	
+  #define the name of the executable to be created
+  set( EXECUTABLE_NAME "executable" )
+
+  #provide name of source file(s) (separate multiple file names with semicolon)
+  set( SOURCE_FILES "main.cpp" )
+
+  #specify which plug-ins to use (separate plug-in names with semicolon)
+  set( PLUGINS "visualizer" )
+
+  #-------- DO NOT MODIFY ---------#
+  include( "${BASE_DIRECTORY}/core/CMake_project.cmake" )
+ ```
+
+  The easiest way to compile the code is by using an IDE such as CLion, which is described in detail on the page \ref CLionIDE "Using the CLion IDE with Helios".
+
+  To build the code from the command line based on the CMakeLists.txt file, which creates a makefile, simply run the command 'cmake', followed by the path to the CMakeLists.txt file.  If, as in the examples above, you are currently in the build directory and your CMakeLists.txt file is located one directory up, the CMake build is accomplished through:
+
+  ```
+  $ cmake ..
+  ```
+
+  By default, this will build Helios in "debug" mode. This is useful for debugging and testing because it will generate debug symbols and output more detailed error messages to the command line. However, this will make the code run much slower because it disables compiler optimizations (usually 3x slower on Linux and 4-5x slower on PC). For 'production' runs, it is recommended to build in 'release' mode in order to enable compiler optimizations. This is accomplished by passing an additional command-line argument to CMake:
+
+  ```
+  $ cmake -DCMAKE_BUILD_TYPE='Release' ..
+  ```
+
+  \subsection BuildTests Building Test Executables
+
+  By default, test executables for the core library and plugins are not built to reduce compilation time and dependencies. Test executables can be enabled by setting the BUILD_TESTS option to ON:
+
+  ```
+  $ cmake -DBUILD_TESTS=ON ..
+  ```
+
+  This will build test executables such as `context_tests` for the core library and `[plugin_name]_tests` for each plugin. These tests must be run manually by executing the test executables directly. Test building can be combined with other options:
+
+  ```
+  $ cmake -DCMAKE_BUILD_TYPE='Release' -DBUILD_TESTS=ON ..
+  ```
+
+  The code can then be compiled by issuing the 'make' command from the build directory, which will produce an executable in the build directory.
+
+  \subsection BuildOpenMP OpenMP Parallel Processing Support
+
+  Helios includes OpenMP support for multi-threaded parallel processing to significantly improve performance on multi-core systems. OpenMP parallelization is integrated into several key components:
+
+  <ul>
+    <li><b>Core Context operations:</b> Many geometric calculations and data management operations in the Context class use OpenMP for parallel processing</li>
+    <li><b>Collision Detection plugin:</b> Ray-tracing algorithms are heavily parallelized using OpenMP with dynamic scheduling</li>
+    <li><b>Radiation plugin:</b> Radiative transfer calculations utilize OpenMP for parallel computation</li>
+  </ul>
+
+  \subsubsection OpenMPBuild Building with OpenMP
+
+  By default, Helios attempts to build with OpenMP support enabled. The CMake configuration automatically detects OpenMP availability and enables it when found. OpenMP support is controlled by the ENABLE_OPENMP CMake option:
+
+  ```
+  $ cmake -DENABLE_OPENMP=ON ..     # Enable OpenMP (default)
+  $ cmake -DENABLE_OPENMP=OFF ..    # Disable OpenMP
+  ```
+
+  When OpenMP is enabled, Helios will automatically use all available CPU cores for parallelized operations. If OpenMP is not available or disabled, Helios gracefully falls back to serial computation without any loss of functionality.
+
+  \subsubsection OpenMPInstall Installing OpenMP
+
+  <b>Linux:</b>
+  OpenMP is typically included with GCC. For Ubuntu/Debian systems, ensure development packages are installed:
+  ```
+  $ sudo apt-get install libomp-dev
+  ```
+  For RHEL/CentOS systems:
+  ```
+  $ sudo yum install libgomp-devel
+  ```
+
+  <b>macOS:</b>  
+  OpenMP requires additional installation since Apple Clang doesn't include it by default:
+  ```
+  $ brew install libomp
+  ```
+  Helios automatically configures libomp when detected via Homebrew.
+
+  <b>Windows:</b>
+  OpenMP is included with Visual Studio C++ compiler and should work automatically.
+
+  \subsubsection OpenMPPerformance Performance Considerations
+
+  OpenMP can provide significant performance improvements, especially for:
+  <ul>
+    <li>Large geometric models with many primitives</li>
+    <li>Collision detection with complex geometries</li>
+    <li>Radiation calculations over large canopies</li>
+    <li>Data processing operations across many primitives</li>
+  </ul>
+
+  Performance scaling typically works best with 2-16 CPU cores. Beyond 16 cores, improvements may diminish due to memory bandwidth limitations and synchronization overhead.
+
+  \subsubsection OpenMPTroubleshooting Troubleshooting OpenMP
+
+  <b>Build Errors:</b>
+  If you encounter OpenMP-related build errors, try:
+  ```
+  $ cmake -DENABLE_OPENMP=OFF ..    # Disable OpenMP temporarily
+  ```
+
+  <b>Runtime Issues:</b>
+  To control the number of threads used by OpenMP at runtime:
+  ```
+  $ export OMP_NUM_THREADS=4       # Use 4 threads (Linux/macOS)
+  $ set OMP_NUM_THREADS=4          # Use 4 threads (Windows)
+  ```
+
+  <b>macOS Issues:</b>
+  If builds fail with OpenMP errors on macOS, ensure libomp is installed:
+  ```
+  $ brew install libomp
+  $ brew --prefix libomp           # Verify installation path
+  ```
+
+  \subsection DirScript New Project Script
+
+  There is a script in the main Helios directory that can quickly set up a new project called "create\_project.sh". First, create a new directory where the project will exist, for example:
+
+ ~~~~~~
+ $ mkdir projects/myProject
+ ~~~~~~
+
+ To set up the new project, run the create\_project.sh script, with the input argument of the project directory:
+
+ ~~~~~~
+ $ utilities/create_project.sh projects/myProjects
+ ~~~~~~
+
+ This will create the CMakeLists.txt file, a main.cpp file template, and an empty build directory.
+
+ You can also specify plug-ins as command-line arguments to the create\_project.sh script, in which case the script will create a CMakeLists.txt and main.cpp file that are set up to load those plug-ins:
+
+ ~~~~~~
+ $ utilities/create_project.sh projects/myProjects radiation visualizer
+ ~~~~~~
+
+ \subsection GlobalInclude C++ Standard Library Include Files
+
+ The file global.h, which is included in the file Context.h, includes most C++ standard library header files that would be used in a typical Helios program. Thus, most commonly it is not necessary to include C++ header files in your main program files (assuming you are at least including "Context.h" or a plug-in header file).
+
+ The included header files are tabulated below.
+
+ <table>
+   <tr><th>Header File</th></tr>
+   <tr><td>\<cstdlib\></td></tr>
+   <tr><td>\<cstdio\></td></tr>
+   <tr><td>\<cstring\></td></tr>
+   <tr><td>\<iostream\></td></tr>
+   <tr><td>\<sstream\></td></tr>
+   <tr><td>\<fstream\></td></tr>
+   <tr><td>\<vector\></td></tr>
+   <tr><td>\<array\></td></tr>
+   <tr><td>\<stdexcept\></td></tr>
+   <tr><td>\<exception\></td></tr>
+   <tr><td>\<cassert\></td></tr>
+   <tr><td>\<cmath\></td></tr>
+   <tr><td>\<memory\></td></tr>
+   <tr><td>\<cmath\></td></tr>
+   <tr><td>\<map\></td></tr>
+   <tr><td>\<unordered_map\></td></tr>
+   <tr><td>\<algorithm\></td></tr>
+   <tr><td>\<ctime\></td></tr>
+   <tr><td>\<random\></td></tr>
+   <tr><td>\<chrono\></td></tr>
+   <tr><td>\<thread\></td></tr>
+   <tr><td>\<iomanip\></td></tr>
+   <tr><td>\<filesystem\></td></tr>
+   <tr><td>\<functional\></td></tr>
+   <tr><td>\<type_traits\></td></tr>
+   </table>
+ 
+ <!-- **************** CONTEXT ***************** -->
+ \section ContextSect Context
+
+ \htmlonly
+ <iframe width="560" height="315" src="https://www.youtube.com/embed/qYespfkNMNI?si=iqPILUcMZjuMvGpF" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+ \endhtmlonly
+
+ The Context is a C++ class that manages data and functions associated with the Helios framework.  The functions of the Context are:
+
+ <ol>
+   <li>Add and manage geometric objects</li>
+   <li>Manage data associated with geometric objects and models in general</li>
+   <li>Manage inputs and outputs</li>
+ </ol>
+
+ In simplest terms, the Context stores information associated with geometric objects (primitives) and their corresponding data.
+
+ In order to use the Context, the following header must be included:
+
+ ~~~
+ #include "Context.h"
+ ~~~
+
+ The context is typically created within the main function:
+
+ ~~~
+ #include "Context.h"
+ using namespace helios;
+
+ int main(){
+    Context context;
+ }
+ ~~~
+
+ The Context is usually passed to plugins (see \ref PlugIns), which gives them access to geometry and data.
+
+ <!-- **************** VECTOR TYPES ***************** -->
+ \section VecTypes Vector Types
+ 
+ There are several vector types commonly used by the Context and other plugins (see \ref PlugIns).  These are C++ structures with at least two member variables.  Helios vector types are defined by including the header file:
+
+ ~~~~~~{.cpp}
+ #include "helios_vector_types.h"
+ ~~~~~~
+
+ Note that this header is included within the 'Context.h' header, so it is not necessary to include both. 
+
+ Available vector types are detailed below. Note that these vector types are all defined under the 'helios' namespace.
+
+ <table>
+ <tr><th>Type</th><th>Description</th><th>Data Fields</th><th>Member Functions</th><th>Math Operators</th><th>Creation Function</th></tr>
+ <tr><td>\ref helios::vec2 "vec2"</td><td>2D vector of floats</td><td>\ref helios::vec2::x "x", \ref helios::vec2::y "y"</td><td>\ref helios::vec2::normalize() "normalize()", \ref helios::vec2::magnitude() "magnitude()"</td><td>* (dot product), * (mult. by scalar), /, +, -, +=, ==, !=, \<\< </td><td>\ref helios::make_vec2() "make_vec2()"</td></tr>
+ <tr><td>\ref helios::vec3 "vec3"</td><td>3D vector of floats</td><td>\ref helios::vec3::x "x", \ref helios::vec3::y "y", \ref helios::vec3::z "z"</td><td>\ref helios::vec3::normalize() "normalize()", \ref helios::vec3::magnitude() "magnitude()"</td><td>* (dot product), * (mult. by scalar), /, +, -, +=, ==, !=, \<\< </td><td>\ref helios::make_vec3() "make_vec3()"</td></tr>
+ <tr><td>\ref helios::vec4 "vec4"</td><td>4D vector of floats</td><td>\ref helios::vec4::x "x", \ref helios::vec4::y "y", \ref helios::vec4::z "z", \ref helios::vec4::w "w"</td><td>none</td><td>* (dot product), * (mult. by scalar), /, +, -, +=, ==, !=, \<\< </td><td>\ref helios::make_vec4() "make_vec4()"</td></tr>
+ <tr><td>\ref helios::int2 "int2"</td><td>2D vector of integers</td><td>\ref helios::int2::x "x", \ref helios::int2::y "y"</td><td>none</td><td>+, -, +=, ==, !=, \<\< </td><td>\ref helios::make_int2() "make_int2()"</td></tr>
+ <tr><td>\ref helios::int3 "int3"</td><td>3D vector of integers</td><td>\ref helios::int3::x "x", \ref helios::int3::y "y", \ref helios::int3::z "z"</td><td>none</td><td>+, -, +=, ==, !=, \<\< </td><td>\ref helios::make_int3() "make_int3()"</td></tr>
+ <tr><td>\ref helios::int4 "int4"</td><td>4D vector of integers</td><td>\ref helios::int4::x "x", \ref helios::int4::y "y", \ref helios::int4::z "z", \ref helios::int4::w "w"</td><td>none</td><td>+, -, +=, ==, !=, \<\< </td><td>\ref helios::make_int4() "make_int4()"</td></tr>
+ <tr><td>\ref helios::SphericalCoord "SphericalCoord"</td><td>Spherical coordinate</td><td>\ref helios::SphericalCoord::radius "radius", \ref helios::SphericalCoord::elevation "elevation", \ref helios::SphericalCoord::zenith "zenith", \ref helios::SphericalCoord::azimuth "azimuth"</td><td>none</td><td> ==, !=, \<\< </td><td>\ref helios::make_SphericalCoord() "make_SphericalCoord()"</td></tr>
+ <tr><td>\ref helios::RGBcolor "RGBcolor"</td><td>red-green-blue color code (values normalized to 1)</td><td>\ref helios::RGBAcolor::r "r", \ref helios::RGBAcolor::g "g", \ref helios::RGBAcolor::b "b"</td><td>\ref helios::RGBcolor::scale() "scale()"</td><td>==, !=, \<\< </td><td>\ref helios::make_RGBcolor() "make_RGBcolor()"</td></tr>
+ <tr><td>\ref helios::RGBAcolor "RGBAcolor"</td><td>red-green-blue-alpha color code (values normalized to 1)</td><td>\ref helios::RGBAcolor::r "r", \ref helios::RGBAcolor::g "g", \ref helios::RGBAcolor::b "b", \ref helios::RGBAcolor::a "a"</td><td>\ref helios::RGBAcolor::scale() "scale()"</td><td>==, !=, \<\< </td><td>\ref helios::make_RGBAcolor() "make_RGBAcolor()"</td></tr>
+ <tr><td>\ref helios::Time "Time"</td><td>Time of day</td><td>\ref helios::Time::second "second", \ref helios::Time::minute "minute", \ref helios::Time::hour "hour"</td><td>none</td><td> ==, !=, \<\< </td><td>\ref helios::make_Time() "make_Time()"</td></tr>
+ <tr><td>\ref helios::Date "Date"</td><td>Calendar date (MM,DD,YYYY)</td><td>\ref helios::Date::day "day", \ref helios::Date::month "month", \ref helios::Date::year "year"</td><td>\ref helios::Date::JulianDay() "JulianDay()", \ref helios::Date::incrementDay() "incrementDay()", \ref helios::Date::isLeapYear() "isLeapYear()"</td><td> ==, !=, \<\< </td><td>\ref helios::make_Date() "make_Date()"</td></tr>
+ </table>
+ 
+ Vector types can be initialized by using their 'make_*()' function. For example, 'i2=make_int2(1,2);' creates an int2 with members 'i2.x -> 1' and 'i2.y -> 2'.
+
+ \subsection RGB R-G-B(-A) color vectors
+ 
+ There are several predefined RGB color vectors (see \ref helios::RGBcolor "RGBcolor") that can be used, which are tabulated below:
+ 
+ <table>
+ <tr><th>Color</th><th>Code</th><th>Sample</th></tr>
+ <tr><td>RGB::black</td><td>(0,0,0)</td><td><div style="width:50px;height:30px;background-color:rgb(0,0,0);"></div></td></tr>
+ <tr><td>RGB::white</td><td>(1,1,1)</td><td><div style="width:50px;height:30px;border:1px solid rgb(75,75,75);"></div></td></tr>
+ <tr><td>RGB::red</td><td>(1,0,0)</td><td><div style="width:50px;height:30px;background-color:rgb(255,0,0);"></div></td></tr>
+ <tr><td>RGB::blue</td><td>(0,0,1)</td><td><div style="width:50px;height:30px;background-color:rgb(0,0,255);"></div></td></tr>
+ <tr><td>RGB::green</td><td>(0,0.6,0)</td><td><div style="width:50px;height:30px;background-color:rgb(0,127,0);"></div></td></tr>
+ <tr><td>RGB::cyan</td><td>(0,1,1)</td><td><div style="width:50px;height:30px;background-color:rgb(0,255,255);"></div></td></tr>
+ <tr><td>RGB::magenta</td><td>(1,0,1)</td><td><div style="width:50px;height:30px;background-color:rgb(255,0,255);"></div></td></tr>
+ <tr><td>RGB::yellow</td><td>(1,1,0)</td><td><div style="width:50px;height:30px;background-color:rgb(255,255,0);"></div></td></tr>
+ <tr><td>RGB::orange</td><td>(1,0.5,0)</td><td><div style="width:50px;height:30px;background-color:rgb(255,127,0);"></div></td></tr>
+ <tr><td>RGB::violet</td><td>(0.5,0,0.5)</td><td><div style="width:50px;height:30px;background-color:rgb(127,0,127);"></div></td></tr>
+ <tr><td>RGB::lime</td><td>(0,1,0)</td><td><div style="width:50px;height:30px;background-color:rgb(0,255,0);"></div></td></tr>
+ <tr><td>RGB::silver</td><td>(0.75,0.75,0.75)</td><td><div style="width:50px;height:30px;background-color:rgb(191,191,191);"></div></td></tr>
+ <tr><td>RGB::gray</td><td>(0.5,0.5,0.5)</td><td><div style="width:50px;height:30px;background-color:rgb(127,127,127);"></div></td></tr>
+ <tr><td>RGB::navy</td><td>(0,0,0.5)</td><td><div style="width:50px;height:30px;background-color:rgb(0,0,127);"></div></td></tr>
+ <tr><td>RGB::brown</td><td>(0.55,0.27,0.075)</td><td><div style="width:50px;height:30px;background-color:rgb(140,69,19);"></div></td></tr>
+ <tr><td>RGB::khaki</td><td>(0.94,0.92,0.55)</td><td><div style="width:50px;height:30px;background-color:rgb(240,235,140);"></div></td></tr>
+ <tr><td>RGB::greenyellow</td><td>(0.678,1,0.184)</td><td><div style="width:50px;height:30px;background-color:rgb(173,255,47);"></div></td></tr>
+ <tr><td>RGB::forestgreen</td><td>(0.133,0.545,0.133)</td><td><div style="width:50px;height:30px;background-color:rgb(34,139,34);"></div></td></tr>
+ <tr><td>RGB::yellowgreen</td><td>(0.6,0.8,0.2)</td><td><div style="width:50px;height:30px;background-color:rgb(153,204,51);"></div></td></tr>
+ <tr><td>RGB::goldenrod</td><td>(0.855,0.647,0.126)</td><td><div style="width:50px;height:30px;background-color:rgb(218,165,32);"></div></td></tr>
+ </table>
+ 
+ Note that the above colors can be directly passed to \ref helios::make_RGBAcolor() "make_RGBAcolor" to specify an alpha (transparency) value:
+ 
+ ~~~~~~{.cpp}
+ RGBAcolor red_trans = make_RGBAcolor( RGB::red, 0.5 );
+ ~~~~~~
+
+ <!-- **************** COORDINATE SYSTEM ***************** -->
+  \section Coord Coordinate System
+  
+  Helios uses a right-handed Cartesian coordinate system.  (x,y,z) coordinates are typically specified using the 'vec3' data structure (see \ref VecTypes).  
+  
+  Rotations are typically specified using spherical angles (see \ref VecTypes).  A rotation of the elevation angle \f$\theta\f$ rotates the object about its y-axis.  A rotation of the azimuthal angle \f$\varphi\f$ rotates the object clockwise about its z-axis.
+  
+  When compass directions are used, +y corresponds to North, and +x corresponds East. The azimuthal angle \f$\varphi\f$ is measured clockwise from North.
+
+ \image html CoordinateSystem.jpg 
+ \image html CompassCoord.jpeg "Coordinate system."
+ 
+ <!-- **************** GEOMETRY ***************** -->
+ \section Geom Geometry
+
+ The Helios framework is centered around geometric objects called 'primitives'.  Primitive elements build up the geometry of the domain, and typically store the data that couples models.  For example, each primitive may have an associated surface temperature value that is updated or used by several different models.
+
+ \subsection PrimitiveTypes Primitive Types
+ 
+ The available geometric primitive types are detailed below.  Each primitive type has an enumeration that can be used in the code to reference each primitive type.
+ 
+ <table>
+  <tr><th>Primitive</th><th>Description</th><th>Enumeration</th></tr>
+  <tr><td>Patch</td><td>Rectangular polygon with coplanar vertices.  A patch is specified by the (x,y,z) coordinate of its center and by the lengths of its sides in the x- and y-directions.  The default orientation of a patch is horizontal (i.e., it's normal is in the +z direction).</td><td>\ref helios::PrimitiveType::PRIMITIVE\_TYPE\_PATCH "PRIMITIVE_TYPE_PATCH"</td></tr>
+  <tr><td>Triangle</td><td>Triangular polygon specified by its three vertices.</td><td>\ref helios::PrimitiveType::PRIMITIVE\_TYPE\_TRIANGLE "PRIMITIVE_TYPE_TRIANGLE"</td></tr>
+  <tr><td>Voxel</td><td>Parallelpiped or rectangular prism.  A voxel is specified by the (x,y,z) coordinate of its center and by the lengths of its sides in the x-, y-, and z-directions.  The default orientation of a voxel is axis-aligned.</td><td>\ref helios::PrimitiveType::PRIMITIVE\_TYPE\_VOXEL "PRIMITIVE_TYPE_VOXEL"</td></tr>
+ </table>	
+ 
+ \subsection AddingPrims Adding Primitives
+ 
+ Primitives are referenced by their 'universal unique identifier' or UUID.  When a function is called to add a primitive to the context, a UUID is returned that can be used later to reference the primitive.  Objects can be formed simply by storing a group of UUIDs corresponding to the primitives that make up the object.
+ 
+ Each primitive type has a different function that is used to add it to the Context, which are detailed in the table below.
+
+ <table>
+ <tr><th>Primitive</th><th>Adder function</th></tr>
+ <tr><td>Patch</td><td>
+     <ul>
+	<li>\ref helios::Context::addPatch(const helios::vec3 & center, const helios::vec2 & size ) "addPatch( vec3 center, vec2 size )"</li>
+	 <li>\ref helios::Context::addPatch(const helios::vec3 & center, const helios::vec2 & size, const helios::SphericalCoord & rotation  ) "addPatch( vec3 center, vec2 size, SphericalCoord rotation )"</li>
+	 <li> \ref helios::Context::addPatch(const helios::vec3 & center, const helios::vec2 & size, const helios::SphericalCoord & rotation, const helios::RGBcolor & color ) "addPatch( vec3 center, vec2 size, SphericalCoord rotation, RGBcolor color )" </li>
+	 <li>\ref helios::Context::addPatch(const helios::vec3 & center, const helios::vec2 & size, const helios::SphericalCoord & rotation, const char* texture_file  ) "addPatch( vec3 center, vec2 size, SphericalCoord rotation, const char* texture_file )"</li>
+	 <li>\ref helios::Context::addPatch(const helios::vec3 & center, const helios::vec2 & size, const helios::SphericalCoord & rotation, const char* texture_file, const helios::vec2 & uv_center, const helios::vec2 & uv_size  ) "addPatch( vec3 center, vec2 size, SphericalCoord rotation, const char* texture_file, vec2 uv_center, vec2 uv_size )"</li>
+       </ul>	 
+ </td></tr>
+ <tr><td>Triangle</td><td>
+   	<ul>
+	 <li>\ref helios::Context::addTriangle( const helios::vec3 & vertex0, const helios::vec3 & vertex1, const helios::vec3 & vertex2 ) "addTriangle( vec3 vertex0, vec3 vertex1, vec3 vertex2 )"</li>
+	 <li>\ref helios::Context::addTriangle( const helios::vec3 & vertex0, const helios::vec3 & vertex1, const helios::vec3 & vertex2, const helios::RGBcolor & color ) "addTriangle( vec3 vertex0, vec3 vertex1, vec3 vertex2, RGBcolor color )"</li>
+	 <li>\ref helios::Context::addTriangle( const helios::vec3 & vertex0, const helios::vec3 & vertex1, const helios::vec3 & vertex2, const char* texture_file, const helios::vec2 & uv0, const helios::vec2 & uv1,const helios::vec2 & uv2 ) "addTriangle( vec3 vertex0, vec3 vertex1, vec3 vertex2, const char* texture_file, vec2 uv0, vec2 uv1, vec2 uv2 )"</li>
+       </ul>
+   </td></tr>
+   <tr>	<td>Voxel</td><td>
+       <ul>
+	 <li>\ref helios::Context::addVoxel( const helios::vec3 & center, const helios::vec3 & size ) "addVoxel( vec3 center, vec3 size )"</li>
+	 <li>\ref helios::Context::addVoxel( const helios::vec3 & center, const helios::vec3 & size, const float & rotation ) "addVoxel( vec3 center, vec3 size, float rotation )"</li>
+       </ul>
+ </td></tr>
+ </table>
+ 
+ \subsubsection AddingPatch Adding Patches
+ 
+ Patches are added by specifying the (x,y,z) coordinate of its center, the lengths of its sides in the x- and y-directions, and optionally its spherical rotation (see \ref Coord) and r-g-b color.  The following is an example of using the 'addPatch' function to add a simple patch:
+
+ ~~~~~~{.cpp}
+  #include "Context.h"
+  using namespace helios;
+       
+  int main(){
+       
+     Context context;
+
+     vec3 center = make_vec3(0,0,1);
+     vec2 size = make_vec2(1,1);
+
+     uint UUID; //universal unique identifier
+     UUID = context.addPatch( center, size );
+     
+  }
+ ~~~~~~
+
+ This will add the Patch shown below, with the default orientation of horizontal. (Note that the addition of the checkerboard ground and the '\ref Visualizer' plugin is needed to replicate this image, which is not shown in the example code.)
+
+ \image html images/Patch.png "Patch geometric primitive."
+ 
+ The patch can also be rotated by adding the optional SphericalCoord argument:
+ 
+ ~~~~~~{.cpp}
+  vec3 center = make_vec3(0,0,1);
+  vec2 size = make_vec2(1,1);
+  SphericalCoord rotation = make_SphericalCoord(0.25*M_PI,0.5*M_PI);
+  context.addPatch( center, size, rotation );
+ ~~~~~~
+
+This will first rotate the patch by 0.25\f$\pi\f$ rad about the x-axis such that its normal is pointing toward the +y direction, THEN it will apply a clockwise azimuthal rotation of 0.5\f$\pi\f$ rad such that its normal is pointing in the +x direction (which will be its final orientation). Note that in order to have more control over rotations, it is recommended to use the \ref helios::Context::rotatePrimitive() function (see "Primitive Transformations" section below).
+
+ \subsubsection AddingTriangle Adding Triangles
+
+ Triangles are added by specifying the (x,y,z) coordinates of the triangle's three vertices, and optionally its r-g-b color.  The following is an example of using the 'addTriangle()' function to add a simple triangle:
+
+ ~~~~~~{.cpp}
+  #include "Context.h"
+  using namespace helios;
+       
+  int main(){
+       
+     Context context;
+
+     vec3 v0 = make_vec3(-0.5,-0.5,1);
+     vec3 v1 = make_vec3(0.5,-0.5,1);
+     vec3 v2 = make_vec3(0,0.5,1);
+
+     uint UUID; //universal unique identifier
+     UUID = context.addTriangle( v0, v1, v2, RGB::red );
+
+  }
+ ~~~~~~
+
+ This will add the Triangle shown below. (Note that the addition of the checkerboard ground and the '\ref Visualizer' plugin is needed to replicate this image, which is not shown in the example code.)
+
+ \image html images/Triangle.png "Triangle geometric primitive."
+
+ An important note for triangles is that the normal direction of the triangle follows the right-hand rule: use your right hand to connect each of the vertices in the order specified, and your thumb will point in the normal direction. This is illustrated in the figure below.
+
+ \image html images/triangle_right-hand-rule.jpeg "Right-hand rule to determine triangle normal direction based on the three vertices 0, 1, and 2."
+
+ \subsubsection AddingVoxel Adding Voxels
+
+ Voxels are added by specifying the (x,y,z) coordinate of its center, the lengths of its sides in the x-, y-, and z-directions, and optionally its spherical rotation (see \ref Coord) and r-g-b color.  The following is an example of using the 'addVoxel()' function to add a simple voxel:
+ 
+ ~~~~~~{.cpp}
+  #include "Context.h"
+  using namespace helios;
+
+  int main(){
+
+     Context context;
+
+     vec3 center = make_vec3(0,0,1);
+     vec3 size = make_vec3(1,1,1);
+
+     uint UUID; //universal unique identifier
+     UUID = context.addVoxel( center, size, 0, RGB::red );
+
+  }
+ ~~~~~~
+
+ This will add the Voxel shown below, with the default orientation of horizontal. (Note that the addition of the checkerboard ground and the 'visualizer' plugin is needed to replicate this image, which is not shown in the example code.)
+
+ \image html images/Voxel.png "Voxel geometric primitive."
+
+ The voxel can also be rotated by adding the optional SphericalCoord argument:
+
+ ~~~~~~{.cpp}
+  vec3 center = make_vec3(0,0,1);
+  vec3 size = make_vec3(1,1,1);
+  rotation = 0.25*M_PI;
+  context.addVoxel( center, size, rotation, RGB::red );
+ ~~~~~~
+
+ \subsection PrimTransform Primitive Transformations
+
+ After primitives have been added to the Context, their position, size, and orientation can be further modified through transformations.
+
+ The \ref helios::Context::scalePrimitive() function takes a vec3 that denotes a scaling factor to apply in each Cartesian direction (x,y,z). The \ref helios::Context::translatePrimitive() function moves the primitive based on values provided by a vec3 that specifies the distance to translate in the x-, y-, and z-directions.
+
+ The \ref helios::Context::rotatePrimitive() function rotates the primitive about an axis through an angle specified in radians. To rotate about one of the x-, y-, or z-axes, the function can be supplied a string of 'x', 'y', or 'z', respectively. The primitive can also be rotated about an arbitrary axis described by a unit vector argument. By default, the axis passes through the origin, but there is also an option to specify an arbitrary axis of rotation passing through an arbitrary origin point.
+
+ It is important to note that the order in which transformations are applied matters. Each transformation is applied based on the primitives current state. Rotating a primitive centered about the origin will cause the primitive to rotate about its own center. However, if a primitive is first translated then rotated, the primitive will be rotated about the origin (0,0,0), which does not necessarily coincide with the primitive's center if it has been translated.
+
+ The table below gives a list of primitive transformation functions, each of which take either a single UUID or a vector of UUIDs to apply the same transformation to multiple primitives.
+
+ <table>
+  <tr><th>Transformation</th><th>Function</th></tr>
+  <tr><td>Translation</td><td><ul>
+                              	<li>\ref helios::Context::translatePrimitive( uint, const helios::vec3& )</li>
+                              	<li>\ref helios::Context::translatePrimitive( const std::vector<uint>&, const helios::vec3& )</li>
+                              	</ul>
+                         </td></tr>
+  <tr><td>Rotation</td><td> <ul>
+                                <li>\ref helios::Context::rotatePrimitive( uint, float, const char* )</li>
+                                <li>\ref helios::Context::rotatePrimitive( const std::vector<uint>&, float, const char* )</li>
+                                <li>\ref helios::Context::rotatePrimitive( uint, float, const helios::vec3& )</li>
+                                <li>\ref helios::Context::rotatePrimitive( const std::vector<uint> &, float, const helios::vec3& )</li>
+                                <li>\ref helios::Context::rotatePrimitive( uint, float, const helios::vec3&, const helios::vec3& )</li>
+                                <li>\ref helios::Context::rotatePrimitive( const std::vector<uint> &, float, const helios::vec3&, const helios::vec3& )</li>
+                            </ul>
+                       </td></tr>
+<tr><td>Scaling</td><td> <ul>
+                                <li>\ref helios::Context::scalePrimitive( uint, const helios::vec3& )</li>
+                                <li>\ref helios::Context::scalePrimitive( const std::vector<uint>&, const helios::vec3& )</li>
+                            </ul>
+                        </td></tr>
+  </table>
+
+  Below is a code example of applying a transformation using a pointer to the primitive:
+
+   ~~~~~~{.cpp}
+    #include "Context.h"
+    using namespace helios;
+
+    int main(){
+
+       // Initialize the Context
+       Context context;
+
+       // Add 'Patch' primitive
+       vec3 center(0,0,1);
+       vec2 size = make_vec2(1,1);
+       uint UUID = context.addPatch( center, size );
+
+       // Apply translation
+       vec3 translation(1,0,0);
+       context.translatePrimitive( UUID, translation );
+
+    }
+  ~~~~~~
+
+ \subsection PrimProps Primitive Properties
+
+ All primitives have a common set of data that can be accessed by the same set of functions, such as the primitive surface area, the primitive vertices, etc.
+
+ The table below gives a list of all available primitive property setter and getter functions. In some case, there is no setter function when it is an intrinsic property of the primitive that is not changeable.
+
+ <table>
+ <tr><th>Property</th><th>Setter Function</th><th>Getter Function</th></tr>
+ <tr><td>Primitive Type</td><td>N/A</td><td>\ref helios::Context::getPrimitiveType( uint ) const </td></tr>
+ <tr><td>Surface Area</td><td>N/A</td><td>\ref helios::Context::getPrimitiveArea( uint ) const</td></tr>
+ <tr><td>Normal Vector</td><td>N/A</td><td>\ref helios::Context::getPrimitiveNormal( uint ) const</td></tr>
+ <tr><td>Vertex Coordinates (x,y,z)</td><td>N/A</td><td>\ref helios::Context::getPrimitiveVertices( uint ) const</td></tr>
+ <tr><td>Parent Object ID</td><td>N/A</td><td>\ref helios::Context::getPrimitiveParentObjectID( uint ) const</td></tr>
+ <tr><td>Diffuse R-G-B color code</td><td><ul><li>\ref helios::Context::setPrimitiveColor( uint, const helios::RGBcolor& ) const</li><li>\ref helios::Context::setPrimitiveColor( const std::vector<uint>&, const helios::RGBcolor& ) const</li></ul></td><td>\ref helios::Context::getPrimitiveColor( uint ) const</td></tr>
+ <tr><td>Diffuse R-G-B-A color code</td><td><ul><li>\ref helios::Context::setPrimitiveColor( uint, const helios::RGBAcolor& ) const</li><li>\ref helios::Context::setPrimitiveColor( const std::vector<uint>&, const helios::RGBAcolor& ) const</li></td><td>\ref helios::Context::getPrimitiveColorRGBA( uint ) const</td></tr>
+ <tr><td>Affine Transformation Matrix</td><td><ul><li>\ref helios::Context::setPrimitiveTransformationMatrix( uint, float (&)[16] )</li><li>\ref helios::Context::setPrimitiveTransformationMatrix( const std::vector<uint>&, float (&)[16] )</li></ul></td><td>\ref helios::Context::getPrimitiveTransformationMatrix( uint, float (&)[16] ) const</td></tr>
+ </table>
+ 
+ Some primitives have special functions specific to that type of primitive.  For example, one may want to query the length and width of a Patch.  These primitive-specific functions are tabulated below. If the type of the primitive corresponding to the UUID passed to the function does not match the primitive type for that function, an error will be thrown (for example passing a Triangle UUID to the function getPatchSize()).
+
+ <table>
+ <tr><th>Primitive Type/Property</th><th>Getter Function</th></tr>
+ <tr><td>Patch Center</td><td>\ref helios::Context::getPatchCenter( uint ) const</td></tr>
+ <tr><td>Patch Size</td><td>\ref helios::Context::getPatchSize( uint ) const</td></tr>
+ <tr><td>Triangle Vertex</td><td>\ref helios::Context::getTriangleVertex( uint, uint ) const</td></tr>
+ <tr><td>Voxel Center</td><td>\ref helios::Context::getVoxelCenter( uint ) const</td></tr>
+ <tr><td>Voxel Size</td><td>\ref helios::Context::getVoxelSize( uint ) const</td></tr>
+ </table>
+ 
+ <p><br></p>
+
+ ~~~~~~{.cpp}
+  #include "Context.h"
+  using namespace helios;
+     
+  int main(){
+
+     // Initialize the Context
+     Context context;
+     
+     // Add 'Patch' primitive
+     vec3 center = make_vec3(0,0,1);
+     vec2 size = make_vec2(1,1);
+     uint UUID = context.addPatch( center, size, nullrotation, RGB::red );
+
+     // Get Patch size
+     vec2 SIZE = getPatchSize( UUID );
+
+  }
+ ~~~~~~
+
+ \subsection Texture Texture Mapping
+
+ Images can be overlaid on patches and triangles through a process called <a href="https://en.wikipedia.org/wiki/Texture_mapping">texture mapping</a>. There are typically two reasons for doing this. One is simply for visualization purposes, as it easily allows for complex coloring of a surface by coloring a surface according to an image. The other is to create a more complex shape by removing a portion of the primitive surface according to the transparency channel of an image. Each of these cases are described in detail below.
+
+ \subsection TextureColor Coloring Primitives by Texture Map
+
+ Patches: To color a Patch  based on an image, simply pass the path to a PNG or JPEG image to the appropriate argument of the addPatch() command. Note that the path should either be absolute, or relative to the directory where the executable will be run (typically the `build' directory).
+ 
+ ~~~~~~{.cpp}
+  vec3 center = make_vec3(0,0,1);
+  vec2 size = make_vec2(2.5,1);
+  SphericalCoord rotation = make_SphericalCoord(0,0);
+  context.addPatch( center, size, rotation, "PSL_logo_white.png");
+ ~~~~~~
+
+ <p> <br> </p>
+
+ \image html images/Patch_textured.png "Patch geometric primitive colored by texture map."
+
+ By default, the image is stretched to fill the entire surface of the patch. Alternatively, custom mapping coordinates can be supplied as illustrated below. Texture mapping coordinates are normalized to the dimensions of the image, such that the point (u,v)=(0,0) is in the lower left of the image, (u,v)=(1,1) is in the upper right of the image and so on.
+
+
+ Patches: For patches, the center and size of the box used to crop the texture are specified in (u,v) coordinates. In this example, the portion of the image inside of the red box would be mapped onto the patch, while the rest would be discarded.
+ 
+ \image html images/GrapeLeaf_uvpatch.jpeg "."
+
+ Triangles: For triangles, the (u,v) coordinates of the three triangle vertices are specified. For triangles, custom (u,v) coordinates must be specified when texture mapping.
+
+ \image html images/GrapeLeaf_uvtriangle.jpeg "."
+  
+ \subsection TextureMask Masking Primitives by Image Transparency Channel
+
+ If the image provided for texture mapping has a transparency channel, the portion of the primitive that is transparent will automatically be removed, and the rest of the non-transparent portion of the primitive will be colored according to the image. Note that only PNG images are supported, since JPEG images do not have transparency. An example is given below.
+
+
+ ~~~~~~{.cpp}
+  #include "Context.h"
+  using namespace helios;
+     
+  int main(){
+
+     // Initialize the Context
+     Context context;
+     
+     // Add 'Patch' primitive with transparency mask
+     vec3 center = make_vec3(0,0,1);
+     vec2 size = make_vec2(1,1);
+     
+     uint UUID = context.addPatch( center, size, make_SphericalCoord(0,0), "GrapeLeaf.png" );
+
+  }
+ ~~~~~~
+
+ \image html images/AlphaMask_leaf.png "Rectangular patch masked by an image with a transparency channel."
+
+ ~~~~~~{.cpp}
+  #include "Context.h"
+  using namespace helios;
+     
+  int main(){
+
+     // Initialize the Context
+     Context context;
+     
+     // Add 'Patch' primitive with transparency mask
+     // We will add a patch at the origin and with unit size, and copy it multiple times
+     vec3 center = make_vec3(0,0,0);
+     vec2 size = make_vec2(1,1);
+
+     uint UUID = context.addPatch( center, size, make_SphericalCoord(0,0), "GrapeLeaf.png" );
+
+     for( int i=0; i<10; i++ ){
+
+     	  uint UUID_copy = context.copyPrimitive(UUID);
+     
+     	  vec3 position = make_vec3( i*3, 0, 0 );
+
+	      context.translatePrimitive( UUID_copy, position );
+
+     }
+
+     // Let's delete the original "template"
+     context.deletePrimitive(UUID);
+
+  }
+ ~~~~~~
+
+ <table>
+  <tr><th>Property</th><th>Getter Function</th></tr>
+  <tr><td>Texture File Name</td><td>\ref helios::Context::getPrimitiveTextureFile( uint ) const</td></tr>
+  <tr><td>Size/resolution of Texture</td><td>\ref helios::Context::getPrimitiveTextureSize( uint ) const</td></tr>
+  <tr><td>U,V Texture Coordinates</td><td>\ref helios::Context::getPrimitiveTextureUV( uint ) const</td></tr>
+  <tr><td>Texture Transparency</td><td>\ref helios::Context::primitiveTextureHasTransparencyChannel( uint ) const</td></tr>
+  <tr><td>Texture Transparency Data</td><td>\ref helios::Context::getPrimitiveTextureTransparencyData( uint ) const</td></tr>
+  <tr><td>Texture Color Override</td><td>\ref helios::Context::isPrimitiveTextureColorOverridden( uint ) const</td></tr>
+  <tr><td>Solid Fraction</td><td>\ref helios::Context::getPrimitiveSolidFraction( uint ) const</td></tr>
+  </table>
+	
+ \subsection Compound Compound Geometry
+
+ The Context has functions to rapidly generate various shapes, which consist of many primitives. These functions simply add the primitives needed to make the specified geometry, and return a vector of UUIDs corresponding to each of the primitives. The important distinction between these functions and those to add "Objects" (described below) is that Objects retain information about the overall 3D object such as the radius of the sphere.
+
+ Functions for adding compound geometry are listed below.
+
+ <table>
+   <tr>
+     <th>Geometry</th>
+     <th>Description</th>
+     <th>Adder function(s)</th>
+     <th>Example</th>
+   </tr>
+   <tr>
+     <td>Tile</td>
+     <td>Patch subdivided into uniform grid of sub-patches.</td>
+     <td> <ul>
+	 <li> \ref helios::Context::addTile( const helios::vec3 &center, const helios::vec2 &size, const helios::SphericalCoord &rotation, const helios::int2 &subdiv ) "addTile( const vec3 &center, const vec2 &size, const SphericalCoord &rotation, const int2 &subdiv )" </li>
+	 <li> \ref helios::Context::addTile( const helios::vec3 &center, const helios::vec2 &size, const helios::SphericalCoord &rotation, const helios::int2 &subdiv, const helios::RGBcolor &color ) "addTile( const vec3 &center, const vec2 &size, const SphericalCoord &rotation, const int2 &subdiv, const RGBcolor &color )" </li>
+	 <li> \ref helios::Context::addTile( const helios::vec3 &center, const helios::vec2 &size, const helios::SphericalCoord &rotation, const helios::int2 &subdiv, const char* texturefile ) "addTile( const vec3 &center, const vec2 &size, const SphericalCoord &rotation, const int2 &subdiv, const char* &texturefile )" </li>
+       </ul>
+     </td>
+     <td>\image html images/Tile.png </td>
+   </tr>
+   <tr>
+     <td>Sphere</td>
+     <td>Spherical object tessellated with Triangle primitives.</td>
+     <td> <ul>
+	 <li> \ref helios::Context::addSphere( uint Ndivs, const helios::vec3 &center, float radius ) "addSphere( uint Ndivs, const vec3 &center, float radius )" </li>
+	 <li> \ref helios::Context::addSphere( uint Ndivs, const helios::vec3 &center, float radius, const helios::RGBcolor &color ) "addSphere( uint Ndivs, const vec3 &center, float radius, const RGBcolor &color )" </li>
+	 <li> \ref helios::Context::addSphere( uint Ndivs, const helios::vec3 &center, float radius, const char* texturefile ) "addSphere( uint Ndivs, const vec3 &center, float radius, const char* texturefille )" </li>
+       </ul>
+     </td>
+     <td>\image html images/Sphere.png </td>
+   </tr>
+   <tr>
+     <td>Tube</td>
+     <td>Cylindrical tube object tessellated with Triangle primitives. Follows a specified path and can change radius along its length.</td>
+     <td><ul>
+	 <li>\ref helios::Context::addTube( uint Ndivs, const std::vector< helios::vec3 > &nodes, const std::vector< float > &radius ) "addTube( uint Ndivs, const vector<vec3> &nodes, const vector<float> &radius )"</li>
+	 <li>\ref helios::Context::addTube( uint Ndivs, const std::vector< helios::vec3 > &nodes, const std::vector< float > &radius, const std::vector<helios::RGBcolor> &color ) "addTube( uint Ndivs, const vector<vec3> &nodes, const vector<float> &radius, const RGBcolor &color )"</li>
+       </ul>
+     </td>
+     <td>\image html images/Tube.png</td>
+   </tr>
+   <tr>
+     <td>Box</td>
+     <td>Rectangular prism object tessellated with Patch primitives.</td>
+     <td><ul>
+	 <li> \ref helios::Context::addBox(const helios::vec3 &center,const helios::vec3 &size, const helios::int3 &subdiv) "addBox( const vec3 &center, const vec3 &size, const int3 &subdiv )" </li>
+	 <li> \ref helios::Context::addBox(const helios::vec3 &center,const helios::vec3 &size, const helios::int3 &subdiv, const helios::RGBcolor &color ) "addBox( const vec3 &center, const vec3 &size, const int3 &subdiv, const RGBcolor &color )" </li>
+	 <li> \ref helios::Context::addBox(const helios::vec3 &center,const helios::vec3 &size, const helios::int3 &subdiv, const helios::RGBcolor &color, const bool revers_normals ) "addBox( const vec3 &center, const vec3 &size, const int3 &subdiv, const RGBcolor &color, bool reverse_normals  )" </li>
+       </ul>
+     </td>
+     <td>\image html images/Box.png </td>
+   </tr>
+   <tr>
+     <td>Disk</td>
+     <td>Ellipsoidal disk object tessellated with Triangle primitives.</td>
+     <td><ul>
+	 <li> \ref helios::Context::addDisk( uint Ndiv, const helios::vec3 & center, const helios::vec2 & size ) "addDisk( uint Ndiv, const vec3 &center, const vec2 &size )" </li>
+	 <li> \ref helios::Context::addDisk( uint Ndiv, const helios::vec3& center, const helios::vec2& size, const helios::SphericalCoord& rotation ) "addDisk( uint Ndiv, const vec3 &center, const vec2 &size, const SphericalCoord &rotation )" </li>
+	 <li> \ref helios::Context::addDisk( uint Ndiv, const helios::vec3& center, const helios::vec2& size, const helios::SphericalCoord& rotation, const helios::RGBcolor& color ) "addDisk( uint Ndiv, const vec3 &center, const vec2 &size, const SphericalCoord &rotation, const RGBcolor &color )" </li>
+	 <li> \ref helios::Context::addDisk( uint Ndiv, const helios::vec3& center, const helios::vec2& size, const helios::SphericalCoord& rotation, const helios::RGBAcolor& color ) "addDisk( uint Ndiv, helios::vec3 center, helios::vec2 size, const SphericalCoord &rotation, const RGBAcolor &color )" </li>
+	 <li> \ref helios::Context::addDisk( uint Ndiv, const helios::vec3& center, const helios::vec2& size, const helios::SphericalCoord& rotation, const char* texture_file ) "addDisk( uint Ndiv, const vec3 &center, const vec2 &size, const SphericalCoord &rotation, const char* texture_file )" </li>
+       </ul>
+     </td>
+     <td>\image html images/Disk.png </td>
+   </tr>
+ </table>
+
+ \subsection Objects Objects
+
+ Objects are geometries consisting of many primitive elements. The critical difference between "Objects" and the compound objects described above is that Objects retain information about the overall geometry such as length, radius, etc., and have many sub-functions for manipulating them and assigning data. This is often useful when you want to know information about the overall object or want to manipulate the entire object in unison.
+
+ Functions for adding objects return a uint that serves as a unique identifier for the object, which can be used for later reference and manipulation. Functions for adding objects are listed in the table below.
+
+ <table>
+   <tr>
+     <th>Object</th>
+     <th>Description</th>
+     <th>Adder function(s)</th>
+     <th>Example</th>
+   </tr>
+   <tr>
+     <td>Tile</td>
+     <td>Patch subdivided into uniform grid of sub-patches.</td>
+     <td> <ul>
+	 <li> \ref helios::Context::addTileObject( const helios::vec3 &center, const helios::vec2 &size, const helios::SphericalCoord &rotation, const helios::int2 &subdiv ) "addTileObject( const vec3 &center, const vec2 &size, const SphericalCoord &rotation, const int2 &subdiv )" </li>
+	 <li> \ref helios::Context::addTileObject( const helios::vec3 &center, const helios::vec2 &size, const helios::SphericalCoord &rotation, const helios::int2 &subdiv, const helios::RGBcolor &color ) "addTileObject( const vec3 &center, const vec2 &size, const SphericalCoord &rotation, const int2 &subdiv, const RGBcolor &color )" </li>
+	 <li> \ref helios::Context::addTileObject( const helios::vec3 &center, const helios::vec2 &size, const helios::SphericalCoord &rotation, const helios::int2 &subdiv, const char* texturefile ) "addTileObject( const vec3 &center, const vec2 &size, const SphericalCoord &rotation, const int2 &subdiv, const char* texturefile )" </li>
+       </ul>
+     </td>
+     <td>\image html images/Tile.png</td>
+   </tr>
+   <tr>
+     <td>Sphere</td>
+     <td>Spherical object tessellated with Triangle primitives.</td>
+     <td> <ul>
+	 <li> \ref helios::Context::addSphereObject( uint Ndivs, const helios::vec3 &center, float radius ) "addSphereObject( uint Ndivs, vec3 &center, float radius )" </li>
+	 <li> \ref helios::Context::addSphereObject( uint Ndivs, const helios::vec3 &center, float radius, const helios::RGBcolor &color ) "addSphereObject ( uint Ndivs, const vec3 &center, float radius, const RGBcolor &color )" </li>
+	 <li> \ref helios::Context::addSphereObject( uint Ndivs, const helios::vec3 &center, float radius, const char* texturefile ) "addSphereObject ( uint Ndivs, const vec3 &center, float radius, const char* texturefile )" </li>
+       </ul>
+     </td>
+     <td>\image html images/Sphere.png </td>
+   </tr>
+   <tr>
+     <td>Tube</td>
+     <td>Cylindrical tube object tessellated with Triangle primitives. Follows a specified path and can change radius along its length.</td>
+     <td><ul>
+	 <li>\ref helios::Context::addTubeObject( uint Ndivs, const std::vector<helios::vec3> &nodes, const std::vector< float > &radius ) "addTubeObject( uint Ndivs, const vector<vec3> &nodes, const vector<float> &radius )"</li>
+	 <li>\ref helios::Context::addTubeObject( uint Ndivs, const std::vector<helios::vec3> &nodes, const std::vector< float > &radius, const std::vector<helios::RGBcolor> &color ) "addTubeObject( uint Ndivs, const vector<vec3> &nodes, const vector<float> &radius, const RGBcolor &color )"</li>
+       </ul>
+     </td>
+     <td>\image html images/Tube.png</td>
+   </tr>
+   <tr>
+     <td>Box</td>
+     <td>Rectangular prism object tessellated with Patch primitives.</td>
+     <td><ul>
+	 <li> \ref helios::Context::addBoxObject(const helios::vec3 &center,const helios::vec3 &size, const helios::int3 &subdiv) "addBoxObject( const vec3 &center, const vec3 &size, const int3 &subdiv )" </li>
+	 <li> \ref helios::Context::addBoxObject(const helios::vec3 &center,const helios::vec3 &size, const helios::int3 &subdiv, const helios::RGBcolor &color ) "addBoxObject( const vec3 &center, const vec3 &size, const int3 &subdiv, const RGBcolor &color )" </li>
+	 <li> \ref helios::Context::addBoxObject(const helios::vec3 &center,const helios::vec3 &size, const helios::int3 &subdiv, const helios::RGBcolor &color, bool revers_normals ) "addBoxObject( const vec3 &center, const vec3 &size, const int3 &subdiv, const RGBcolor &color, bool reverse_normals  )" </li>
+       </ul>
+     </td>
+     <td>\image html images/Box.png </td>
+   </tr>
+   <tr>
+     <td>Disk</td>
+     <td>Ellipsoidal disk object tessellated with Triangle primitives.</td>
+     <td><ul>
+	 <li> \ref helios::Context::addDiskObject( const uint Ndiv, const helios::vec3 & center, const helios::vec2 & size ) "addDiskObject( uint Ndiv, helios::vec3 center, helios::vec2 size )" </li>
+	 <li> \ref helios::Context::addDiskObject( const uint Ndiv, const helios::vec3& center, const helios::vec2& size, const helios::SphericalCoord& rotation ) "addDiskObject( uint Ndiv, const vec3 &center, const vec2 &size, const SphericalCoord &rotation )" </li>
+	 <li> \ref helios::Context::addDiskObject( const uint Ndiv, const helios::vec3& center, const helios::vec2& size, const helios::SphericalCoord& rotation, const helios::RGBcolor& color ) "addDiskObject( uint Ndiv, const vec3 &center, vec2 size, const SphericalCoord &rotation, const RGBcolor color )" </li>
+	 <li> \ref helios::Context::addDiskObject( const uint Ndiv, const helios::vec3& center, const helios::vec2& size, const helios::SphericalCoord& rotation, const helios::RGBAcolor& color ) "addDiskObject( uint Ndiv, const vec3 &center, vec2 size, const SphericalCoord &rotation, const RGBAcolor &color )" </li>
+	 <li> \ref helios::Context::addDiskObject( const uint Ndiv, const helios::vec3& center, const helios::vec2& size, const helios::SphericalCoord& rotation, const char* texture_file ) "addDiskObject( uint Ndiv, vec3 center, const vec2 &size, const SphericalCoord &rotation, const char* texture_file )" </li>
+       </ul>
+     </td>
+     <td>\image html images/Disk.png </td>
+   </tr>
+   <tr>
+     <td>Cone</td>
+     <td>Tapered cylinder/cone object tessellated with triangles.</td>
+     <td><ul>
+	 <li>\ref helios::Context::addConeObject( uint Ndivs, const helios::vec3 &node0, const helios::vec3 &node1, float radius0, float radius1 ) "addConeObject( uint Ndivs, const vec3 &node0, const vec3 &node1, float radius0, float radius1 )"</li>
+	 <li>\ref helios::Context::addConeObject( uint Ndivs, const helios::vec3 &node0, const helios::vec3 &node1, float radius0, float radius1, const helios::RGBcolor &color ) "addConeObject( uint Ndivs, const vec3 &node0, const vec3 &node1, float radius0, float radius1, const RGBcolor &color )"</li>
+	 <li>\ref helios::Context::addConeObject( uint Ndivs, const helios::vec3 &node0, const helios::vec3 &node1, float radius0, float radius1, const char* texturefile ) "addConeObject( uint Ndivs, const vec3 &node0, const vec3 &node1, float radius0, float radius1, const char* texturefile )"</li>
+       </ul>
+     </td>
+     <td>\image html images/Cone.png </td>
+   </tr>
+ </table>
+
+ Similar to individual primitives, objects have functions to perform transformations on the entire object in unison. These functions are member functions of the \ref helios::CompoundObject class. As with primitives, you can use the identifier to an object to get its pointer, from which you can access member functions.
+
+ ~~~~~~{.cpp}
+  uint objID; //unique identifier to object
+  objID = context.addTileObject( center, size, rotation, make_int2(2,2) );
+
+  float area = context.getObjectArea(objID);
+ ~~~~~~
+
+ The table below gives a list of available Object functions.
+
+ <table>
+ <tr><th>Property</th><th>Getter Function</th></tr>
+ <tr><td>Object ID</td><td>\ref helios::CompoundObject::getObjectID() "getObjectID()"</td></tr>
+ <tr><td>Object Type</td><td>\ref helios::CompoundObject::getObjectType() "getObjectType()"</td></tr>
+ <tr><td>Primitive Count</td><td>\ref helios::CompoundObject::getPrimitiveCount() "getPrimitiveCount()"</td></tr>
+ <tr><td>Member Primitive UUIDs</td><td>\ref helios::CompoundObject::getPrimitiveUUIDs() "getPrimitiveUUIDs()"</td></tr>
+ <tr><td>Member Primitive Check</td><td>\ref helios::CompoundObject::doesObjectContainPrimitive() "doesObjectContainPrimitive()"</td></tr>
+ <tr><td>Object Center</td><td>\ref helios::CompoundObject::getObjectCenter() "getObjectCenter()"</td></tr>
+ <tr><td>Surface Area</td><td>\ref helios::CompoundObject::getArea() "getArea()"</td></tr>
+ <tr><td>Override Texture</td><td>\ref helios::CompoundObject::overrideTextureColor() "overrideTextureColor()"</td></tr>
+ <tr><td>Use Texture</td><td>\ref helios::CompoundObject::useTextureColor() "useTextureColor()"</td></tr>
+ </table>
+
+ Objects can be translated and rotated using functions similar to that of primitives:
+
+ <table>
+ <tr><th>Transformation</th><th>Function</th></tr>
+ <tr><td>Translate in x, y, or z direction</td><td>\ref helios::CompoundObject::translate( const helios::vec3 &shift ) "translate( vec3 shift )"</td></tr>
+ <tr><td>Rotate about x, y, or z axis</td><td>\ref helios::CompoundObject::rotate( float rot, const char* axis ) "rotate( float rot, const char* axis )"</td></tr>
+ <tr><td>Rotate about arbitrary axis</td><td>\ref helios::CompoundObject::rotate( float rot, const helios::vec3 &axis ) "rotate( float rot, vec3 axis )"</td></tr>
+ <tr><td>Apply scaling factor in x, y, or z</td><td>\ref helios::CompoundObject::scale( const helios::vec3 &scale ) "scale( vec3 scaling_factor )"</td></tr>
+ </table>
+ 
+ Some objects have special functions specific to that type of object, which are listed below. In order to access these functions, you need to get a pointer to that type of object using the appropriate get[*]ObjectPointer() function.
+ 
+ <table>
+ <tr><th>Object Type</th><th>Pointer Getter Function</th><th>Special Function</th></tr>
+ <tr><td>Tile</td><td>\ref helios::Context::getTileObjectPointer() "getTileObjectPointer()"</td><td>
+     <ul>
+	<li>\ref helios::Tile::getSize() "getSize()"</li>
+        <li>\ref helios::Tile::getCenter() "getCenter()"</li>
+	<li>\ref helios::Tile::getSubdivisionCount() "getSubdivisionCount()"</li>
+	<li>\ref helios::Tile::getVertices() "getVertices()"</li>
+	<li>\ref helios::Tile::getNormal() "getNormal()"</li>
+	<li>\ref helios::Tile::getTextureUV() "getTextureUV()"</li>
+	<li>\ref helios::Tile::scale() "scale()"</li>
+       </ul>
+ </td></tr>
+ <tr><td>Sphere</td><td>\ref helios::Context::getSphereObjectPointer() "getSphereObjectPointer()"</td><td>
+    <ul>
+	 <li>\ref helios::Sphere::getRadius() "getRadius()"</li>
+	 <li>\ref helios::Sphere::getCenter() "getCenter()"</li>
+	 <li>\ref helios::Sphere::getSubdivisionCount() "getSubdivisionCount()"</li>
+	 <li>\ref helios::Sphere::scale() "scale()"</li>
+       </ul>
+ </td></tr>
+ <tr><td>Tube</td><td>\ref helios::Context::getTubeObjectPointer() "getTubeObjectPointer()"</td><td>
+       <ul>
+	 <li>\ref helios::Tube::getNodes() "getNodes()"</li>
+	 <li>\ref helios::Tube::getNodeRadii() "getNodeRadii()"</li>
+	 <li>\ref helios::Tube::getSubdivisionCount() "getSubdivisionCount()"</li>
+	 <li>\ref helios::Tube::scale() "scale()"</li>
+       </ul>
+ </td>
+ <tr><td>Box</td><td>\ref helios::Context::getBoxObjectPointer() "getBoxObjectPointer()"</td><td>
+       <ul>
+	 <li>\ref helios::Box::getSize() "getSize()"</li>
+	 <li>\ref helios::Box::getCenter() "getCenter()"</li>
+	 <li>\ref helios::Box::getSubdivisionCount() "getSubdivisionCount()"</li>
+	 <li>\ref helios::Box::scale() "scale()"</li>
+       </ul>
+ </td>
+ <tr><td>Disk</td><td>\ref helios::Context::getDiskObjectPointer() "getDiskObjectPointer()"</td><td>
+       <ul>
+	 <li>\ref helios::Disk::getSize() "getSize()"</li>
+	 <li>\ref helios::Disk::getCenter() "getCenter()"</li>
+	 <li>\ref helios::Disk::getSubdivisionCount() "getSubdivisionCount()"</li>
+	 <li>\ref helios::Disk::scale() "scale()"</li>
+       </ul>
+ </td>
+ <tr><td>Cone</td><td>\ref helios::Context::getConeObjectPointer() "getConeObjectPointer()"</td><td>
+       <ul>
+	 <li>\ref helios::Cone::getNodeCoordinates() "getNodeCoordinates()"</li>
+	 <li>\ref helios::Cone::getNodeCoordinate() "getNodeCoordinate()"</li>
+	 <li>\ref helios::Cone::getNodeRadii() "getNodeRadii()"</li>
+	 <li>\ref helios::Cone::getNodeRadius() "getNodeRadius()"</li>
+	 <li>\ref helios::Cone::getSubdivisionCount() "getSubdivisionCount()"</li>
+	 <li>\ref helios::Cone::getAxisUnitVector() "getAxisUnitVector()"</li>
+	 <li>\ref helios::Cone::getLength() "getLength()"</li>
+	 <li>\ref helios::Cone::scaleLength() "scaleLength()"</li>
+	 <li>\ref helios::Cone::scaleGirth() "scaleGirth()"</li>
+       </ul>
+ </td>
+ </tr>
+ </table>
+
+ <!-- **************** DATA STRUCTURES ***************** -->
+ \section Data Data Structures
+
+ Data structures that are moved in and out of plugins are managed by the Context.  There are two types of Context data structures that serve different purposes:
+ 
+ <ul>
+   <li><b>Primitive Data</b> - is a piece of data associated with a given primitive. An example of this may be the reflectivity or temperature of a given primitive. Primitive data is flexible in that it can have different data types, variable lengths, and can be different for different primitives.  For example, voxels could have a data value specifying the attenuation coefficient, but the attenuation coefficient would not be relevant for patches so they would not have this piece of data.  A given primitive could have an array of 10 integers as its data.  However, primitive data is limited to one-dimensional arrays, and mapping to multidimensional data is left to the user.</li>
+   <li><b>Global Data</b> - is similar to 'primitive data', except that global data is not necessarily associated with any particular primitive. An example of global data might be the solar radiative flux incident on the earth.</li>
+ </ul>
+
+ Implementation of data structure usage is detailed for each type of structure below.
+
+ Only certain data types are supported for primitive and global data (below), which are referenced using their enumeration type.
+ 
+ <table>
+ <tr><th>Data type</th><th>Enumeration (HeliosDataType)</th></tr>
+ <tr><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">int</span>\endhtmlonly</td><td>\ref helios::HELIOS_TYPE_INT "HELIOS_TYPE_INT"</td></tr>
+ <tr><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">uint</span>\endhtmlonly</td><td>\ref helios::HELIOS_TYPE_UINT "HELIOS_TYPE_UINT"</td></tr>
+ <tr><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>\ref helios::HELIOS_TYPE_FLOAT "HELIOS_TYPE_FLOAT"</td></tr>
+ <tr><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">double</span>\endhtmlonly</td><td>\ref helios::HELIOS_TYPE_DOUBLE "HELIOS_TYPE_DOUBLE"</td></tr>
+ <tr><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">vec2</span>\endhtmlonly</td><td>\ref helios::HELIOS_TYPE_VEC2 "HELIOS_TYPE_VEC2"</td></tr>
+ <tr><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">vec3</span>\endhtmlonly</td><td>\ref helios::HELIOS_TYPE_VEC3 "HELIOS_TYPE_VEC3"</td></tr>
+ <tr><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">vec4</span>\endhtmlonly</td><td>\ref helios::HELIOS_TYPE_VEC4 "HELIOS_TYPE_VEC4"</td></tr>
+ <tr><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">int2</span>\endhtmlonly</td><td>\ref helios::HELIOS_TYPE_INT2 "HELIOS_TYPE_INT2"</td></tr>
+ <tr><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">int3</span>\endhtmlonly</td><td>\ref helios::HELIOS_TYPE_INT3 "HELIOS_TYPE_INT3"</td></tr>
+ <tr><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">int4</span>\endhtmlonly</td><td>\ref helios::HELIOS_TYPE_INT4 "HELIOS_TYPE_INT4"</td></tr>
+ <tr><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">std::string</span>\endhtmlonly</td><td>\ref helios::HELIOS_TYPE_STRING "HELIOS_TYPE_STRING"</td></tr>
+ </table>
+ 
+ <!--
+ \subsection Variables Variables
+
+ \subsubsection AddVariables Adding Variables
+
+ Variables are created from the Context via the \ref helios::Context::addVariable "addVariable" command.  The user specifies the name of the variable upon creation, which will be used to reference the data later.
+ 
+ ~~~~~~{.cpp}
+  #include "Context.h"
+  using namespace helios;
+
+  int main(){
+
+     Context context;
+
+     context.addVariable("temperature");
+
+  }
+ ~~~~~~
+
+ Variables can be added before or after primitives are added to the Context.  If variables are added before a primitive, newly added primitive variable values will be initialized to zero as they are added.  If variables are added after some primitives have been added, any previously added primitive variable values will be set to zero, and newly added primitive variable values will be initialized to zero as they are added.  
+
+ The existence of a variable can be queried via the \ref helios::Context::doesVariableExist "doesVariableExist" function.
+	
+ \subsubsection SetVariables Setting Variable Values
+
+ The values of variables can be set through the Context via the \ref helios::Context::setVariableValue "setVariableValue" function:
+
+ ~~~~~~{.cpp}
+  #include "Context.h"
+  using namespace helios;
+     
+  int main(){
+
+     Context context;
+
+     context.addVariable("temperature");
+
+     uint UUID = context.addPatch( center, size, RGB::red );
+
+     context.setVariableValue(UUID,"temperature",300); 
+
+  }
+ ~~~~~~
+
+ \subsubsection GetVariables Getting Variable Values
+ 
+ Getting the values of variables is done via the \ref helios::Context::getVariableValue "getVariableValue" function:
+ 
+ ~~~~~~{.cpp}
+  #include "Context.h"
+  using namespace helios;
+
+  int main(){
+
+     Context context;
+
+     context.addVariable("temperature");
+
+     uint UUID = context.addPatch( center, size, RGB::red );
+
+     context.setVariableValue(UUID,"temperature",300);
+
+     float T = context.getVariableValue(UUID,"temperature");
+
+  }
+ ~~~~~~
+
+ In the above example, the value of 'T' in equal to 300.f.
+
+ -->
+
+ \subsection PrimData Primitive Data
+
+ \subsubsection SetPrimData Setting Primitive Data Values
+ 
+ Primitive data values can be scalar or a one-dimensional array of values.
+
+ Primitive data is set for a given primitive via the Context using the \ref helios::Context::setPrimitiveData() "setPrimitiveData()" function. Example use of this function for scalar data is given below.
+
+ ~~~~~~{.cpp}
+  #include "Context.h"
+  using namespace helios;
+
+  int main(){
+
+     Context context;
+
+     uint UUID = context.addPatch( center, size, RGB::red );
+
+     float eps = 0.9;
+     context.setPrimitiveData(UUID,"emissivity",eps);
+  }
+ ~~~~~~
+
+ There are multiple ways of setting vector primitive data. One method uses STL vectors to pass the data to the \ref helios::Context::setPrimitiveData() "setPrimitiveData()", and another is accomplished using a pointer to a standard C vector.  Both of these equivalent methods are illustrated below.
+
+ ~~~~~~{.cpp}
+  #include "Context.h"
+  using namespace helios;
+
+  int main(){
+
+     Context context;
+
+     vec3 center(0,0,0);
+     vec2 size(1,1);
+
+     uint UUID = context.addPatch( center, size );
+
+     std::vector<float> A;
+     A.push_back(2.3);
+     A.push_back(9.2);
+     context.setPrimitiveData(UUID,"somedataA",HELIOS_TYPE_FLOAT,A.size(),&A[0]);
+
+     float B[2];
+     B[0] = 2.3;
+     B[1] = 9.2;
+     context.setPrimitiveData(UUID,"somedataB",HELIOS_TYPE_FLOAT,2,&B[0]);
+       
+  }
+
+ ~~~~~~
+
+ \subsubsection GetPrimData Getting Primitive Data Values
+
+ If primitive data is a scalar value, it can be retrieved for a given primitive via the Context using the \ref helios::Context::getPrimitiveData() "getPrimitiveData" function:
+
+ ~~~~~~{.cpp}
+  #include "Context.h"
+  using namespace helios;
+     
+  int main(){
+
+     Context context;
+
+     vec3 center(0,0,0);
+     vec2 size(1,1);
+
+     uint UUID = context.addPatch( center, size );
+
+     float eps = 0.9;
+     context.setPrimitiveData(UUID,"emissivity",eps);
+     
+     float emissivity;
+     context.getPrimitiveData(UUID,"emissivity",emissivity);
+
+  }
+ ~~~~~~
+
+ In the above example, the value of 'emissivity' is 0.9.
+
+ \subsubsection PrimDataHelpers Primitive Data Query Functions
+
+ It is often necessary to query information about primitive data. The following table lists functions used to query primitive data information.
+
+ <table>
+ <tr><th>Function</th><th>Description</th></tr>
+ <tr><td>\ref helios::Context::doesPrimitiveDataExist() "doesPrimitiveDataExist( uint UUID, const char* label )"</td><td>Check whether primitive data named 'label' exists for the primitive.</td></tr>
+ <tr><td>\ref helios::Context::getPrimitiveDataType() "getPrimitiveDataType( uint UUID, const char* label )"</td><td>Get the \ref helios::HeliosDataType for the primitive.</td></tr>
+ <tr><td>\ref helios::Context::getPrimitiveDataSize() "getPrimitiveDataSize( uint UUID, const char* label )"</td><td>Get the length/size of the primitive data named 'label'.</td></tr>
+ </table>  
+ 
+ <p> <br> </p>  
+
+ ~~~~~~{.cpp}
+  #include "Context.h"
+  using namespace helios;
+
+  int main(){
+
+     Context context;
+
+     vec3 center(0,0,0);
+     vec2 size(1,1);
+
+     uint UUID = context.addPatch( center, size );
+
+     float eps = 0.9;
+     context.setPrimitiveData(UUID, "emissivity", eps);
+
+     if( context.doesPrimitiveDataExist(UUID, "emissivity") ){
+        HeliosDataType type = context.getPrimitiveDataType("emissivity");
+        uint L = context.getPrimitiveDataSize(UUID, "emissivity");
+     }
+
+  }
+ ~~~~~~
+
+ \subsection GlobalData Global Data
+
+ Global data is similar to primitive data, except that it does not correspond to any particular primitive, rather it is a single instance of a certain data structure. The functions used to create global data within the Context are essentially the same as those used to create primitive data, except they do not take a primitive UUID as an argument (because they do not correspond to primitives).
+
+ \subsection DataTimeseries Data Timeseries (Weather Inputs)
+
+ Timeseries - or data points corresponding to discrete points in time - can be managed by the Context.  This typically corresponds to weather data that is measured by a sensor.  Timeseries data points are added to the Context by giving the value of the data point, along with \ref helios::Date "Date" and \ref helios::Time "Time" vectors.  An example is given below to manually add 15-min timeseries data to the Context.
+	
+ Data in the timeseries can be accessed either via the queryTimeseriesData() function by giving the index of the data point, or by giving a date and time.  To loop through all data in the timeseries, we can query the length of the timeseries and make a for-loop.
+
+ ~~~~~~{.cpp}
+  #include "Context.h"
+  using namespace helios;
+
+  int main(){
+
+        // Initialize the Context
+        Context context;
+     
+        // Add data to timeseries
+        Date date;
+        Time time;
+
+        date = make_Date( 2, 1, 2000 ); // 2 Jan. 2000
+
+        time = make_Time( 13, 00, 00 ); // 13:00:00
+        context.addTimeseriesData( "temperature", 301.23, date, time ); // index #0
+	    
+        time = make_Time( 13, 15, 00 ); // 13:15:00
+        context.addTimeseriesData( "temperature", 301.92, date, time ); // index #1
+	    
+        time = make_Time( 13, 30, 00 ); // 13:30:00
+        context.addTimeseriesData( "temperature", 302.56, date, time ); // index #2
+	    
+        time = make_Time( 13, 45, 00 ); // 13:45:00
+        context.addTimeseriesData( "temperature", 303.05, date, time ); // index #3
+
+        float T;
+        T = context.queryTimeseriesData( "temperature", 1 ); // Here, T = 301.92
+	    
+        time = make_Time( 13, 15, 00 );
+        T = context.queryTimeseriesData( "temperature", date, time ); // Also here, T = 301.92
+
+        for( uint i=0; i<context.getTimeseriesLength("temperature"); i++ ){
+	     T = context.queryTimeseriesData( "temperature", i );
+             time = context.getTimeseriesTime( "temperature", i );
+	     printf("Temperature at time %02d:%02d:%02d is %f\n", time.hour, time.minute, time.second );							 
+	 }
+
+  }
+ ~~~~~~
+
+ Typically, data is not entered manually, but rather through an XML or text file (see \ref TimeXML "Reading XML Files" for information).
+
+ It is often necessary to get the number of data points in a given timeseries, which can be accomplished with the command:
+
+ ~~~~~~{.cpp}
+  uint N = context.getTimeseriesLength( "temperature" );
+ ~~~~~~
+
+ The value of an existing timeseries data point can be replaced using \ref helios::Context::updateTimeseriesData() "updateTimeseriesData()", which locates the point by its (Date, Time) key and overwrites the value in place. This is useful for correcting or recomputing individual points without rebuilding the whole timeseries. The method throws a runtime error if the variable does not exist, or if no point has exactly the specified date and time.
+
+ ~~~~~~{.cpp}
+  time = make_Time( 13, 15, 00 );
+  context.updateTimeseriesData( "temperature", date, time, 302.10 ); // replaces the value at index #1
+ ~~~~~~
+	
+
+*/
+
+<!-- **************** FILE INPUT/OUTPUT ***************** -->	
+/*! \page IO File Input/Output
+
+  <div style="padding:10px;background-color:#66FF66 ;line-height:1.2;">
+  File paths can be given as absolute paths or relative paths. Helios automatically resolves asset file paths (models, textures, spectra, etc.) so executables can be run from any directory. The resolution system searches for assets relative to the build directory. You can set the HELIOS_BUILD environment variable to specify a custom build directory location if needed.
+  </div>
+
+  \section XMLstructure XML File Structure
+
+  File input and output is handled using .xml files.  See the Wikipedia page for xml for more information on xml files: <a href="https://en.wikipedia.org/wiki/XML">en.wikipedia.org/wiki/XML</a>.
+
+  Within Helios, xml files can be used to execute any Context commands that would be issued within a program, for example, adding geometry, adding timeseries, or adding primitive data.
+
+  All xml files start with a header indicating the version to be used, and the tag "<helios>...</helios>" should encapsulate the whole file:
+
+  ~~~~~~{.xml}
+   <?xml version="1.0"?>
+   <helios>
+	 
+   </helios>
+  ~~~~~~
+
+  Comments are given in xml files by:
+  ~~~~~~{.xml}
+    <!-- this is a comment -->
+  ~~~~~~
+
+  \subsection PrimXML Adding Primitives
+
+  Primitives are added by giving a tag with the primitive type, followed by elements that specify necessary inputs.  The table below gives examples of adding each primitive type in an .xml file.  Note that the parameters used to specify the primitives are the same as when adding them to the Context via 'add[*]' commands (e.g., addPatch()).
+
+  <table>
+  <tr><th>Primitive Type</th><th>Code Sample</th></tr>
+  <tr><td>Patch</td><td>
+	<div style="padding:0.5px;background-color:#D0D0D0 ;line-height:1.2;">
+	  <pre><code> \<patch\>
+	   \<center\>0 0 0\</center\>
+	   \<size\>1 1\</size\>
+	   \<rotation\>0 0\</rotation\> \<!-- OPTIONAL -->
+	   \<color\>1 0 0\</color\> \<!-- OPTIONAL -->
+	   \<texture\>"grass.jpg"\</texture\> \<!-- OPTIONAL -->
+	\</patch\></code></pre>
+	</div>
+  </td></tr>
+  <tr><td>Triangle</td><td>
+	<div style="padding:0.5px;background-color:#D0D0D0 ;line-height:1.2;">
+	  <pre><code> \<triangle\>
+	   \<vertex\>0 0 0\</vertex\>
+	   \<vertex\>1 0 0\</vertex\>
+	   \<vertex\>1 1 0\</vertex\>
+	   \<color\>1 0 0\</color\>
+	\</triangle\></code></pre>
+	</div>
+  </td></tr>
+  <tr><td>Disk</td><td>
+	<div style="padding:0.5px;background-color:#D0D0D0 ;line-height:1.2;">
+	  <pre><code> \<disk\>
+	   \<center\>0 0 0\</center\>
+	   \<size\>1 1\</size\>
+	   \<rotation\>0 0\</rotation\>
+	   \<color\>1 0 0\</color\>
+	   \<texture\>"grass.jpg"\</texture\>
+	\</disk\></code></pre>
+	</div>
+  </td></tr>
+  <tr><td>Voxel</td><td>
+	<div style="padding:0.5px;background-color:#D0D0D0 ;line-height:1.2;">
+	  <pre><code> \<voxel\>
+	   \<center\>0 0 0\</center\>
+	   \<size\>1 1 1\</size\>
+	   \<color\>1 0 0\</color\>
+	\</voxel\></code></pre>
+	</div>
+  </td></tr>
+  </table>
+
+  \subsection TimeXML Adding Timeseries Data
+
+  Data timeseries are specified by the tag 'timeseries' with the attribute giving the label for the timeseries (e.g., temperature).  The 'datapoint' tag is used to specify data points, with elements specifying the time, date, and value.  The sample below gives an example of creating a timeseries in an xml file.
+
+  ~~~~~~{.xml}
+  <?xml version="1.0"?>
+  <helios>
+   <timeseries label="temperature" >
+	<datapoint>
+	  <date>2 1 2000</date> <!-- 2 Jan. 2000 -->
+	  <time>0 0 13</time> <!-- 13:00:00 -->
+	  <value>301.23</value>
+	</datapoint>
+	<datapoint>
+	  <date>2 1 2000</date> <!-- 2 Jan. 2000 -->
+	  <time>13 15 00</time> <!-- 13:15:00 -->
+	  <value>301.92</value>
+	</datapoint>
+	<datapoint>
+	  <date>2 1 2000</date> <!-- 2 Jan. 2000 -->
+	  <time>13 30 00</time> <!-- 13:30:00 -->
+	  <value>302.56</value>
+	</datapoint>
+	<datapoint>
+	  <date>2 1 2000</date> <!-- 2 Jan. 2000 -->
+	  <time>13 45 00</time> <!-- 13:45:00 -->
+	  <value>303.05</value>
+	</datapoint>
+  </timeseries>
+  </helios>
+  ~~~~~~
+
+  Note that the date can alternatively be specified as a Julian day of year (1-366) using the \<dateJulian\> tag:
+
+  ~~~~~~{.xml}
+    <dateJulian>2 2000</dateJulian> <!-- 2 Jan. 2000, Julian Day = 2 -->
+  ~~~~~~
+
+  \section ASCIItimeseries Adding Timeseries (Weather) Data from Tabular Text Files
+
+  If timeseries/weather data is available in a tabular ASCII text file, this can be read directly into the Context to create a timeseries using the \ref helios::Context::loadTabularTimeseriesData() method. The general format for these files is that each column should correspond to each variable (e.g., time, date, temperature, wind speed) and each row should be a different time point. There should be an equal number of columns on every line.
+
+  At a minimum, there should be a column specifying the date, which could either be a date string (e.g., 03/10/2023) or Julian day and the year, as well as columns specifying the hour and at least one corresponding data value. The date string can separate values by the '/' or '-' characters (03/10/2023 or 03-10-2023, respectively), and can have different ordering (e.g., YYYYMMDD) which is specified based on an argument to the \ref helios::Context::loadTabularTimeseriesData() method.
+
+  There are two ways of specifying the ordering and labels of columns. The first is to specify them in the file header (first line). The second is to specify them manually as an argument to the \ref helios::Context::loadTabularTimeseriesData() method. This can be useful if you want to customize the names of data values without modifying the actual text file.
+
+  There are certain column labels that are keywords used by Helios to specify required values such as the date. These are given in the table below. Any other label not contained in the table below will be treated as a variable, whose label in the timeseries will be the given column label.
+
+  <table>
+     <tr><th>Column Label</th><th>Description</th><th>Required?</th></tr>
+     <tr><td>year</td><td>Year (YYYY)</td><td>year+DOY -OR- date -OR- datetime</td></tr>
+     <tr><td>DOY or Jul</td><td>Day of year starting at Jan. 1 (DOY=1)</td><td>year+DOY -OR- date -OR- datetime</td></tr>
+     <tr><td>date</td><td>Date string delimited by '/' or '-' character, or compact 8-digit (e.g., 20260203). Default format YYYY-MM-DD.</td><td>year+DOY -OR- date -OR- datetime</td></tr>
+     <tr><td>datetime</td><td>Combined date+time string (e.g., ISO-8601 "2026-02-03T10:00:00Z", compact "2026020310", or space-separated "2026-02-03 10:00"). Cannot be combined with 'date' or 'hour'.</td><td>year+DOY -OR- date -OR- datetime</td></tr>
+     <tr><td>hour</td><td>Hour of the day. Can be specified either as 13 or 1300 (for 1PM example).</td><td>hour -OR- time -OR- datetime</td></tr>
+     <tr><td>time</td><td>Time string in HH, HH:MM, or HH:MM:SS format. Auto-detected based on presence of colons.</td><td>hour -OR- time -OR- datetime</td></tr>
+     <tr><td>minute</td><td>Minute of the hour. If 'hour' above is specified with minute included (e.g., 1315), the minute field will be automatically added.</td><td>no</td></tr>
+     <tr><td>second</td><td>Second of the minute.</td><td>no</td></tr>
+  </table>
+
+  Arguments to the \ref helios::Context::loadTabularTimeseriesData() method:
+
+  1. A string specifying the file to be loaded, with path relative to the current working directory or as an absolute path.
+  2. A vector of strings specifying labels for the columns in the file. If an empty vector is specified ('{}'), the labels given in the first line of the file will be used. Otherwise, the length of the vector must match the number of columns in the file.
+  3. The delimiter character separating values in each row (e.g., ',').
+  4. (optional) The format of the date/datetime string. Supported formats include:
+     - Date-only formats (for "date" column): 'YYYYMMDD', 'MMDDYYYY', 'DDMMYYYY', 'YYYYDDMM'. Delimiter-style synonyms like 'YYYY-MM-DD', 'DD/MM/YYYY' are also accepted. Compact 8-digit dates without delimiters (e.g., '20260203') are auto-detected.
+     - Combined datetime formats (for "datetime" column): 'ISO8601' (e.g., '2026-02-03T10:00:00Z' or '2026-02-03T02:00:00-08:00'), 'YYYYMMDDHH', 'YYYYMMDDHHMM', 'YYYY-MM-DD HH:MM', 'YYYY-MM-DD HH:MM:SS', 'DD/MM/YYYY HH:MM', 'MM/DD/YYYY HH:MM'.
+     - For ISO-8601 strings with timezone offsets, the local time from the string is used and the Context's UTC_offset is set from the offset. The default format is 'YYYYMMDD'.
+  5. (optional) Number of header lines in the file. By default, headerlines=0.
+
+  There is a special shortcut for reading <a href="https://cimis.water.ca.gov">CIMIS weather station</a> files. To read these files, simply specify the second argument as a vector of length 1 containing the string "CIMIS" (e.g., {"CIMIS"}), which will automatically set column labels as:
+  '{"", "", "", "date", "hour", "DOY", "ETo", "", "precipitation", "", "net_radiation", "", "vapor_pressure", "", "air_temperature", "", "air_humidity", "", "dew_point", "", "wind_speed", "", "wind_direction", "", "soil_temperature", ""}'. You can specify any delimiter in this case - it will be overridden to be comma delimited.
+
+  A code example for generic weather data is given below.
+
+  ~~~~~~{.cpp}
+   #include "Context.h"
+   using namespace helios;
+
+   int main(){
+
+      Context context;
+
+      context.loadTabularTimeseriesData("../input/weatherfile.csv", {"date", "hour", "temperature"}, ",", "MMDDYYYY", 1);
+
+      Date date = make_Date( 2, 1, 2020 );
+      Time time = make_Time( 13, 00, 00 );
+      float T = context.queryTimeseriesData( "temperature", date, time );
+
+   }
+  ~~~~~~
+
+  The above example would read the comma-delimited file "../input/weatherfile.csv". Timeseries data would be added to the Context for values of "temperature", which could be queried based on this label.
+
+  \subsection TimeseriesISO ISO-8601 and Combined Datetime Columns
+
+  For files with combined date+time columns, use the "datetime" column label instead of separate "date" and "hour" columns. This is useful for ISO-8601 formatted data commonly found in NOAA, NASA, CAMS, and other international weather data sources.
+
+  ~~~~~~{.cpp}
+   // ISO-8601 formatted data (e.g., from NOAA or CAMS)
+   context.loadTabularTimeseriesData("../input/iso_weather.csv", {"datetime", "temperature", "humidity"}, ",", "ISO8601", 1);
+
+   // Compact datetime format (YYYYMMDDHH)
+   context.loadTabularTimeseriesData("../input/compact_weather.csv", {"datetime", "temperature"}, ",", "YYYYMMDDHH", 1);
+
+   // Space-separated datetime with European date ordering
+   context.loadTabularTimeseriesData("../input/eu_weather.csv", {"datetime", "temperature"}, ",", "DD/MM/YYYY HH:MM", 1);
+  ~~~~~~
+
+  For files using a separate "time" column (HH:MM or HH:MM:SS format) instead of an integer "hour" column:
+
+  ~~~~~~{.cpp}
+   context.loadTabularTimeseriesData("../input/precise_weather.csv", {"date", "time", "temperature"}, ",", "YYYYMMDD", 1);
+  ~~~~~~
+
+  \section XMLread Reading XML Files
+
+ XML files can be read by the Context via the function \ref helios::Context::loadXML().  This function parses the XML file and adds all specified structures (see above) to the Context. Below is an example of how to load an XML file into the Context.
+  ~~~~~~{.cpp}
+   #include "Context.h"
+   using namespace helios;
+
+   int main(){
+
+      Context context;
+
+      context.loadXML( "file.xml" );
+
+   }
+  ~~~~~~
+
+  \section Poly Reading Standard Polygon File Formats
+	
+  \subsection PLYread Reading PLY (Stanford Polygon) Files
+
+  The Context can automatically import Stanford .ply files <a href="https://en.wikipedia.org/wiki/PLY_(file_format)">en.wikipedia.org/wiki/PLY_(file_format)</a>.  This is accomplished via the \ref helios::Context::loadPLY() command, as illustrated below. There are several overloaded versions of this function, which allow for various modifications to the PLY model.
+
+  ~~~~~~{.cpp}
+   #include "Context.h"
+   using namespace helios;
+
+   int main(){
+
+       Context context;
+
+       // location where PLY model will be centered
+       vec3 origin(0,0,0);
+
+       // scaling factor to apply to model
+       float scale = 1.0;
+
+       // rotation to apply to model (optional argument to loadPLY)
+       SphericalCoord rotation( 0., M_PI );
+
+       // default color for model (optional argument to loadPLY)
+       RGBcolor color = RGB::red;
+
+       context.loadPLY( "file.ply", origin, scale, rotation, color );
+
+   }
+  ~~~~~~
+
+  There are other forms of the loadPLY function that allow for translation, rotation, and scaling of the entire PLY model.
+
+  Different applications may utilize different coordinate axes in .ply files. In computer graphics applications, it is common to define the y-axis as the up direction. Helios uses a z-up coordinate system. By default \ref helios::Context::loadPLY() assumes that the coordinate system used when creating the .ply file is y-up. There is an optional argument \ref helios::Context::loadPLY() that can allow you to easily define the up-axis.
+
+  The Blender software package (<a href="https://www.blender.org">www.blender.org</a>) can easily modify and convert most polygon file formats to .ply format.  \ref ConvertPLY "This page" gives a tutorial on how to perform such conversions using Blender.
+
+  \subsection OBJread Reading OBJ (Wavefront) Files
+
+  Helios can read <a href="https://en.wikipedia.org/wiki/Wavefront_.obj_file">Wavefront (.obj)</a> files and associated material (.mtl) files.  Not all features of .obj files are applicable to Helios, and thus some features are not supported.  Supported features are:
+
+  - Geometric vertex coordinates (x,y,z)
+  - Vertex texture coordinates (u,v)
+  - Texture map image files (.jpg, .png) associated with materials
+  - Object groups. When the 'o groupname' is added before a set of vertices, primitive data called 'object_label' is written for the resulting set of primitives.
+
+  Wavefront files are loaded via the \ref helios::Context::loadOBJ() function, which takes the name of an .obj file.  If the file defines materials and lists an associated material (.mtl) file, the code looks in one of two places for the file.  First, if an absolute or relative path is given for the .mtl file name, the file is simply loaded from that location.  If only a file name is given for the .mtl file, the directory where the original .obj file was found is searched for the .mtl file.
+
+  All aspects of material files are not supported. Helios simply searches for the "Kd" texture map, and uses that to color the primitives.
+
+  The \ref helios::Context::loadOBJ() function requires inputs that scale the model to achieve a certain size of the model, and apply a rotation to the model. There are multiple overloaded versions of this function (listed below) that allow specification of these aspects differently.
+
+  <table>
+   <tr><th>Function</th><th>Description</th></tr>
+   <tr><td>\ref helios::Context::loadOBJ( const char* filename, const vec3 &origin, float height, const SphericalCoord &rotation, const RGBcolor &default_color, bool silent=false )</td><td>Load the model and translate it to the location 'origin', scale to have a height of 'height' (set height=0 to apply no scaling), and apply spherical rotation of 'rotation'.</td></tr>
+   <tr><td>\ref helios::Context::loadOBJ( const char* filename, const vec3 &origin, float height, const SphericalCoord &rotation, const RGBcolor &default_color, const char* upaxis, bool silent=false )</td><td>Same as above, except specify the 'up axis' of the model ('XUP', 'YUP', or 'ZUP'). Some 3D modeling software uses a different default axis corresponding to the up direction (e.g., computer graphics software commonly uses 'y' as the up direction).</td></tr>
+   <tr><td>\ref helios::Context::loadOBJ( const char* filename, const vec3 &origin, const vec3 &scale, const SphericalCoord &rotation, const RGBcolor &default_color, const char* upaxis, bool silent=false )</td><td>Same as above, except a scaling factor is applied to the model in the x-, y-, and z-directions based on the value of 'scale' (if scale.x=scale.y=scale.z=0, no scaling is applied).</td></tr>
+  </table>
+
+  The last optional argument to the \ref helios::Context::loadOBJ() function allows the user to disable any messages output from the function while loading by setting silent=true.
+
+  Example code is given below to load an OBJ model at the origin with no scaling (height=0) or rotation (rotation='nullrotation') applied and default up axis of "z".
+
+  ~~~~~~{.cpp}
+   #include "Context.h"
+   using namespace helios;
+
+   int main(){
+
+      Context context;
+
+      context.loadOBJ("relative/path/to/someobjfile.obj", make_vec3(0,0,0), 0, nullrotation, RGB::red );
+
+   }
+  ~~~~~~
+
+  \subsection PLYwrite Writing PLY (Stanford Polygon) Files
+
+  The Context has analogous files for writing PLY files based on the geometry currently loaded in the Context. This is accomplished via the \ref helios::Context::writePLY() command, as illustrated below.
+
+  ~~~~~~{.cpp}
+   #include "Context.h"
+   using namespace helios;
+
+   int main(){
+
+       Context context;
+
+       context.addPatch();
+
+       context.writePLY( "file.ply" );
+
+   }
+  ~~~~~~
+
+  \subsection OBJwrite Writing OBJ (Wavefront) Files
+
+  Writing Wavefront OBJ files is similar to writing a PLY file, except that it will produce both a .obj file containing the geometry, and a .mtl file defining materials (colors, texture masks). For this reason, only the base file name with no extension is provided to the function.
+
+  ~~~~~~{.cpp}
+   #include "Context.h"
+   using namespace helios;
+
+   int main(){
+
+       Context context;
+
+       context.addPatch();
+
+       // This will produce two files: "file.obj" and "file.mtl"
+       context.writeOBJ( "file" );
+
+   }
+  ~~~~~~
+
+  \section Export Exporting Project to XML File Format
+
+ All geometry and global/primitive data loaded into the Context can be written to an XML file using the \ref helios::Context::writeXML() function, which can be later read back in using the \ref helios::Context::loadXML(). This functionality can be used to save progress during a simulation run, or to ensure that consistent geometry is always used across simulation runs, among other things.
+
+  An XML file can be written as follows:
+
+  ~~~~~~{.cpp}
+   #include "Context.h"
+   using namespace helios;
+
+   int main(){
+
+       Context context;
+
+       uint UUID = context.addPatch();
+
+       context.setPrimitiveData( UUID, "somedata", 10.2f );
+
+       context.writeXML( "file.xml" );
+
+   }
+  ~~~~~~
+
+  and later read back into a new simulation:
+
+  ~~~~~~{.cpp}
+   #include "Context.h"
+   using namespace helios;
+
+   int main(){
+
+       Context context;
+
+       // The context will now contain a default patch, with primitive data "somedata" equal to 10.2
+       context.loadXML( "file.xml" );
+
+   }
+   ~~~~~~
+
+  \section ExportASCII Exporting Primitive Data to Text File
+
+    It is often useful to be able to write primitive data to an ASCII text file for analysis in 3rd party software. This can be accomplished using the \ref helios::Context::writePrimitiveData() function. Each row of the resulting file will correspond to each primitive, and each column corresponds to different primitive data values. The user must specify which primitive data fields to write to each column in the file. If requested primitive data does not exist for one or more primitives, a default value of 0 will be written and a warning will be issued.
+
+    ~~~~~~{.cpp}
+     #include "Context.h"
+     using namespace helios;
+
+     int main(){
+
+         Context context;
+
+         uint UUID = context.addPatch();
+
+         context.setPrimitiveData( UUID, "somedata", 10.2f );
+         context.setPrimitiveData( UUID, "otherdata", 5 );
+
+         std::string columns{"somedata","otherdata"};
+
+         context.writePrimitiveData( "file.txt", columns );
+
+     }
+    ~~~~~~
+
+    By default, column header labels will not be written, but if the optional third argument is set as "true" the label of the primitive data for each column will be written to the first line of the file.
+
+*/
+
+/*! \page MakingMasks Making texture mask files with transparency using GIMP
+
+
+  GIMP (GNU Image Processing Program) is a free image processing program that makes creating mask files easy.  The example below shows how to make a mask file for a leaf.
+
+  \section One 1. Choosing the image
+
+  Select an image of the leaf that has a background with a roughly constant background color.  This is fairly easy to find using Google image search.  At this point, the image can have pretty much any format (e.g., .jpeg, .png).  If you can't find an image with constant background color, it may still be possible to remove the background using GIMP**.  The image below shows an image of an aspen leaf.
+
+  Now, open the image in GIMP (File->Open).
+
+  \image html AspenLeaf_raw.jpg "JPEG image of an aspen leaf."
+       
+  \section Two 2. Rotating and cropping (OPTIONAL)
+	
+  We typically don't want the petiole in the image (or we may want to crop out part of the image), and the standard orientation is with the petiole base pointing to the left.  First we'll rotate the image to the right.  Select the rotate tool in the Toolbox, then click on the image.  A dialog will come up where you can specify how much to rotate.  For the aspen leaf, we'll rotate about 25 degrees.
+
+  Next, select just the leaf using the rectangular select tool from the Toolbox.  The image to this point is shown in the figure below.  Click on the drop-down menu "Image->Crop to Selection".
+
+  \image html AspenLeaf_rotatecrop.png "Screenshot of rotated leaf image, with region to be cropped selected."
+
+  \section Three 3. Removing the background
+
+  Now we want to remove the background.  If the background is white, we'll first want to change it to black.  This is because the .png image we produce will still have the white saved although it will be transparent, which can create some edge effects in our visualizations.  Use the bucket fill tool in the Toolbox to fill the white areas black.  In many cases, you may need to adjust the Threshold in the Toolbox "Tool Options" so that the fill will be tight to the edge of the leaf.  For the aspen leaf, I set the threshold at about 50.  It is usually best to error on the side of a larger threshold.  Usually somewhere between 50-100 is a good choice.  Just make sure that there it not too many white pixels along the edge of the object.  If you see white specks around the edge of your object in the Helios visualizations, the threshold was probably too low.
+       
+  Next, add an alpha channel to the image by going to the menu "Layer->Transparency->Add Alpha Channel".  Note that the image may already have an alpha channel.  Now use the fuzzy select tool in the Toolbox to select the black background.  There is an option to adjust the threshold again, but if things went well with the bucket fill, it shouldn't need adjustment here.  Now, you can go to "Edit->Clear" to remove the background.
+
+  \image html AspenLeaf_background.png "Screenshot of leaf image with background removed."
+
+  \section Four 4. Exporting to .png format
+
+  Finally, go to "File->Export As" and export the file as a .png image.  You should be able to simply name the image with a .png extension and it will figure out that it is PNG format.  However, there is also an arrow drop-down at the bottom that can be used to specify the file type.
+
+        
+
+  ** I have found the "Scissors Select Tool" in the toolbox to be useful in tracing around the edges of objects when the background does not have a constant color.
+	
+*/
+
+/*! \page ConvertPLY Converting polygon file formats to .ply using Blender
+
+
+  The following steps detail how to use <a href="https://www.blender.org">Blender</a> to convert various polygon file formats to .ply format.  <a href="https://www.turbosquid.com">TurboSquid</a> is a great place to find free 3D polygon models in many different formats.  Note that in order to search only for free models, it is necessary to set the appropriate price range in the Price filter.
+
+  After opening Blender, it is useful to delete the default cube.  Right-click on the cube in the upper righthand pane and select 'delete', which is shown in the screenshot below.     
+	      
+  \image html Blender_deletecube.png
+
+  Next, import the polygon file by clicking on 'file' in the upper menu bar, then navigate to 'import'.  Supported file formats are Collada (.dae), 3D Studio (.3ds), FBX (.fbx), Motion Capture (.bvh), Stanford (.ply), Wavefront (.obj), X3D Extensible 3D (.x3d/.wrl), Stl (.stl), and Scalable Vector Graphics (.svg).  The screenshot below gives an example of an imported chess piece model.
+
+  Once the model has been imported, click on it in the upper righthand pane as shown in the screenshot below.  You can manipulate the object as needed, or proceed directly to export.
+	      
+  \image html Blender_import.png
+
+  With the object selected, click on 'file' again in the upper menu bar, and navigate to 'export', then to 'Stanford (.ply)'.  In the lower left, use the 'Up:' drop-down to specify 'Y Up', which will make the coordinate system consistent with that of Helios.  Once that is complete, specify an appropriate filename and click 'Export PLY'. 
+	      
+*/
+
+/*! \page "ChoosingCUDA" Choosing the right CUDA and OptiX version
+
+\note CUDA is <b>not required</b> to use the radiation model. The radiation model supports a Vulkan compute backend that works on all platforms, including macOS and systems without NVIDIA GPUs. CUDA is only needed if you want to use the OptiX backend (NVIDIA systems only) or to build the Aerial LiDAR plugin.
+
+Picking the right version of the NVIDIA CUDA driver can be the most difficult part of the CUDA install. If you choose the wrong version, the resulting error messages may not always be clear. This guide will help you to choose the right CUDA version for your system. It may also be necessary to change your OptiX version if using an old GPU along with the radiation model. Fortunately, this is easy and will also be described below.
+
+\section chooseCUDA CUDA Version
+
+There are three main considerations when choosing your CUDA version:
+
+1. GPU compute capability: The compute capability of your GPU is essentially an identifier corresponding to the architecture generation. Older GPUs will have a lower compute capability. You can look up your GPU's compute capability <a href="https://developer.nvidia.com/cuda-gpus">here</a>. You need a compute capability of 3.5 or higher to build Helios. If your compute capability is 3.5, you need to enable the OPTIX\_VERSION\_LEGACY option as described below.
+2. C++ compiler version: Only a certain range of compiler versions are supported for a given CUDA version. The procedure for looking up your compiler version is different for different operating systems, and is described below.
+
+The system requirements for any CUDA version can be found in the release notes, which is both packaged with the CUDA toolkit and can be found on the page where you download CUDA.
+
+The table below gives recommendations for Windows and Linux Systems based on your compute capability.
+
+<table>
+    <tr><th>Operating System</th><th>Compute capability</th><th>Recomm. Compiler</th><th>Recomm. CUDA</th><th>Use legacy OptiX?</th></tr>
+    <tr><td rowspan="2">Windows</td><td>3.5</td><td>Visual Studio 2019</td><td>10.2</td><td>Yes</td></tr>
+    <tr>                            <td>5.0+</td><td>Visual Studio 2022</td><td>Latest</td><td>No</td></tr>
+    <tr><td rowspan="2">Linux</td><td>3.5</td><td>gcc/g++ 6.0-8.0</td><td>10.2</td><td>Yes</td></tr>
+    <tr>                          <td>5.0+</td><td>gcc/g++ 7.0-11.0</td><td>Latest</td><td>No</td></tr>
+</table>
+
+\section chooseOptiX OptiX Version
+
+The NVIDIA OptiX library is used for ray-tracing calculations in the radiation model. Helios bundles three versions of OptiX and selects among them automatically based on your NVIDIA driver version:
+
+| Driver version | OptiX version used | CUDA requirement |
+|---|---|---|
+| ≥ 560 | OptiX 8.1 (default, recommended) | CUDA 12.0+ |
+| &lt; 560 | OptiX 6.5 (legacy) | CUDA 9.0+ |
+| Any (or no NVIDIA GPU) | Vulkan compute backend | None |
+
+\note NVIDIA drivers 590.x and later dropped support for OptiX 6.5. If you have a modern GPU and driver, Helios automatically uses OptiX 8.1, which supports all current and future NVIDIA drivers. The driver 590+ incompatibility that existed in earlier Helios versions is fully resolved.
+
+<b>Legacy GPUs (compute capability 3.5):</b> If you are using a GPU with compute capability &lt; 5.0, you can force the OptiX 6.5 legacy backend by setting <tt>-DOPTIX_VERSION_LEGACY=ON</tt>. There are two ways to do this:
+
+1. Pass option to CMake: Set the following CMake option in CLion: "-DOPTIX_VERSION_LEGACY=ON". Go to CLion settings, then "build, execution, deployment -> CMake", and type "-DOPTIX_VERSION_LEGACY=ON" into the CMake Options box. You can also pass this option to CMake if building from the command line.
+
+2. Add the variable directly in your project CMakeLists.txt file: Add the line <tt>set( OPTIX_VERSION_LEGACY ON )</tt> to your project CMakeLists.txt file.
+
+
+*/
+
+/*! \page PCGPUTimeout Increasing graphics driver timeout
+
+By default, Windows constantly monitors the GPU and driver to make sure it is responding as expected (called Timeout Detection and Recovery, or TDR). If it does not respond after 2 seconds, it will reset the driver. This is problematic for general purpose GPU computing because intensive calculations may take longer than 2 seconds.
+
+You can and should edit the registry to increase the timeout delay. The steps are detailed below:
+
+1. Open the Windows Registry Editor. This can be accomplished by a) search for 'Registry Editor' in the Windows search bar, b) Right-click the Windows start icon, select "Run" and type in "regedit".
+
+2. Navigate to: <code>Computer\\HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\GraphicsDrivers</code> in the left browser pane or address bar.
+
+3. If the "TdrDelay" key does not exist, add it by performing the following:
+
+    a. Edit > New > "DWORD (32bit Value)"
+
+    b. Name the key "TdrDelay"
+
+    c. Double-click on "TdrDelay" key, make it a Decimal, and set its value to some "large" value you feel comfortable with. A conservative value may be 60 (sec), but the higher the better for potentially long-running GPU calculations.
+
+4. Reboot your system for settings to take effect. In some cases, the TdrDelay value can be changed automatically in some cases if you update your OS.
+
+*/
