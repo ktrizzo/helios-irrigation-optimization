@@ -242,10 +242,30 @@ if(EXISTS "${_VULKAN_BUNDLED_INCLUDE}/vulkan/vulkan.h")
 			message(STATUS "[Radiation] Using system Vulkan loader (installed by GPU drivers)")
 		endif()
 	elseif(NOT WIN32 AND NOT Vulkan_LIBRARIES)
+		# On Linux, GPU drivers often install only the runtime loader (libvulkan.so.1)
+		# while the unversioned linker symlink comes from libvulkan-dev.
+		if(UNIX AND NOT APPLE)
+			set(_VULKAN_RUNTIME_CANDIDATES
+				"/lib/x86_64-linux-gnu/libvulkan.so.1"
+				"/usr/lib/x86_64-linux-gnu/libvulkan.so.1"
+				"/lib64/libvulkan.so.1"
+				"/usr/lib64/libvulkan.so.1"
+			)
+			foreach(_VULKAN_RUNTIME IN LISTS _VULKAN_RUNTIME_CANDIDATES)
+				if(EXISTS "${_VULKAN_RUNTIME}")
+					set(Vulkan_LIBRARIES "${_VULKAN_RUNTIME}")
+					message(STATUS "[Radiation] Using Vulkan runtime loader: ${Vulkan_LIBRARIES}")
+					break()
+				endif()
+			endforeach()
+		endif()
+
 		# On Linux/macOS, fall back to default library name so the linker can resolve it
 		if(APPLE)
 			set(Vulkan_LIBRARIES "vulkan")
 			message(STATUS "[Radiation] Vulkan loader not found. Install with: brew install vulkan-loader molten-vk")
+		elseif(Vulkan_LIBRARIES)
+			# Keep the absolute runtime path discovered above.
 		else()
 			set(Vulkan_LIBRARIES "vulkan")
 			message(STATUS "[Radiation] Vulkan loader not found. Install with: sudo apt-get install libvulkan-dev")
