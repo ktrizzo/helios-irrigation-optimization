@@ -205,7 +205,9 @@ auto sim = [](const ParametersToOptimize& p) {
         // Run the longwave band, stomatal conductance plugin, and energy balance plugin again to update primitive temperature values
         for (int i=0;i<3;i++){
             energybalance.run();
-            stomatalconductance.run(leaf_UUIDs);
+            //stomatalconductance.run(leaf_UUIDs);
+            float gs = p.at("gs").value;
+            context.setPrimitiveData(leaf_UUIDs,"moisture_conductance", gs);
             boundarylayerconductance.run();
             radiation.runBand("LW");
         }
