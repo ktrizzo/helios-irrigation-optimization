@@ -212,7 +212,7 @@ int main() {
             float E, A, WUE, psi;
             context.getPrimitiveData(UUID, "latent_flux", E);
             context.getPrimitiveData(UUID, "net_photosynthesis", A);
-            context.getPrimitiveData(UUID,"stem_water_potential",psi);
+            planthydraulics.getStemWaterPotentialOfPlant(0);
             E_canopy += E / 44000 * 1000; // mmol H2O / m^2 / sec
             A_canopy += A; // umol CO2 / m^2 / sec
 
