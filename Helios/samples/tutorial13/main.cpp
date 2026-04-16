@@ -4,6 +4,7 @@
 #include "CanopyGenerator.h"
 #include "EnergyBalanceModel.h"
 #include "PhotosynthesisModel.h"
+#include "PlantHydraulicsModel.h"
 #include "RadiationModel.h"
 #include "SolarPosition.h"
 #include "StomatalConductanceModel.h"
@@ -130,15 +131,24 @@ int main() {
     StomatalConductanceModel stomatalconductance(&context);
 
     BMFcoefficients bmfc;
-    stomatalconductance.setModelCoefficients(bmfc);
+    stomatalconductance.setBMFCoefficientsFromLibrary("almond");
+
+    PlantHydraulicsModel planthydraulics(&context);
+    PlantHydraulicsModelCoefficients phmc;
+    phmc.setLeafHydraulicCapacitanceFromLibrary("walnut");
+    phmc.setLeafHydraulicConductance(0.0055f,-1.f,1.f);
+    phmc.setStemHydraulicConductance(0.0055f);
+    phmc.setRootHydraulicConductance(0.0055f);
+
+    planthydraulics.setModelCoefficients(phmc);
+
+
+
 
     //*** Step 8: Setting Up Photosynthesis Model ***//
 
     PhotosynthesisModel photosynthesis(&context);
-
-    FarquharModelCoefficients photoparams;
-    photosynthesis.setModelCoefficients(photoparams);
-    photosynthesis.setModelType_Farquhar();
+    photosynthesis.setFarquharCoefficientsFromLibrary("almond");
 
     // *** Step 9: Reading in Our Timeseries Data *** //
 
@@ -178,24 +188,29 @@ int main() {
 
         radiation.runBand({"PAR", "NIR", "LW"});
 
-        stomatalconductance.run(leaf_UUIDs);
-        energybalance.run();
-
         // Run the longwave band, stomatal conductance plugin, and energy balance plugin again to update primitive temperature values
-        radiation.runBand("LW");
-        stomatalconductance.run(leaf_UUIDs);
-        energybalance.run();
+        for (int i=0;i<3;i++){
+            energybalance.run();
+            stomatalconductance.run(leaf_UUIDs);
+            boundarylayerconductance.run();
+            radiation.runBand("LW");
+        }
+
 
         photosynthesis.run(leaf_UUIDs); // always run this last, since nothing depends on it
+        planthydraulics.run(leaf_UUIDs);
 
         // *** Step 11: Calculating WUE ***//
 
         float A_canopy = 0;
         float E_canopy = 0;
+        float psi_canopy = 0;
+        int plantID = 0;
         for (uint UUID: leaf_UUIDs) {
-            float E, A, WUE;
+            float E, A, WUE, psi;
             context.getPrimitiveData(UUID, "latent_flux", E);
             context.getPrimitiveData(UUID, "net_photosynthesis", A);
+            context.getPrimitiveData(UUID,"stem_water_potential",psi);
             E_canopy += E / 44000 * 1000; // mmol H2O / m^2 / sec
             A_canopy += A; // umol CO2 / m^2 / sec
 
@@ -212,13 +227,12 @@ int main() {
         visualizer.buildContextGeometry(&context);
         visualizer.colorContextPrimitivesByData("WUE");
         visualizer.setColorbarTitle("WUE (umol CO2/mmol H2O)");
-        ;
         visualizer.setColorbarRange(0.f, 15.f);
         visualizer.setColorbarPosition(make_vec3(0.75, 0.9, 0));
         char time_string[6];
         sprintf(time_string, "%02d:%02d", time.hour, time.minute);
         visualizer.addTextboxByCenter(time_string, make_vec3(0.5, 0.9, 0), nullrotation, RGB::black, 16, "Arial", Visualizer::COORDINATES_WINDOW_NORMALIZED);
-        visualizer.plotInteractive(); // !!! Close the window to advance to the next time step
+        visualizer.printWindow(); // !!! Close the window to advance to the next time step
     }
 
     return 0;
