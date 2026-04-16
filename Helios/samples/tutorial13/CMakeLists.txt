@@ -14,7 +14,7 @@ set( EXECUTABLE_NAME "tutorial13" )
 set( SOURCE_FILES "main.cpp" )
 
 #specify which plug-ins to use (separate plug-in names with semicolon)
-set( PLUGINS "visualizer;radiation;energybalance;stomatalconductance;boundarylayerconductance;solarposition;canopygenerator;photosynthesis" )
+set( PLUGINS "visualizer;radiation;energybalance;stomatalconductance;boundarylayerconductance;solarposition;canopygenerator;photosynthesis;planthydraulics" )
 
 #-------- DO NOT MODIFY ---------#
 include( "${BASE_DIRECTORY}/core/CMake_project.cmake" )
