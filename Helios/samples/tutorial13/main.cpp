@@ -164,8 +164,8 @@ auto sim = [](const ParametersToOptimize& p) {
 
     std::vector<float> psis = {};
     float WUE_canopy;
-    int startHour = 7;
-    int endHour = 18;
+    int startHour = 12;
+    int endHour = 13;
     for (int hour = startHour; hour < endHour; hour++) {
 
         Time time(hour, 0, 0);
