@@ -230,7 +230,7 @@ int main() {
         }
 
         psi_canopy = planthydraulics.getStemWaterPotentialOfPlant(0);
-        psis.at(hour-startHour) = psi_canopy;
+        psis.push_back(psi_canopy);
 
         float WUE_canopy = A_canopy / E_canopy; // umol CO2/mmol H2O
 
