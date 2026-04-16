@@ -44,8 +44,8 @@ int main() {
     float spacing_row = 2 * crown_radius;
     float spacing_plant = 2 * crown_radius;
 
-    int row_number = 3; // number of rows
-    int plant_number = 3; // number of plants per row
+    int row_number = 1; // number of rows
+    int plant_number = 1; // number of plants per row
 
     float l_leaf = 0.075; // leaf length
     float w_leaf = 0.05; // leaf width
@@ -140,6 +140,7 @@ int main() {
     phmc.setStemHydraulicConductance(0.0055f);
     phmc.setRootHydraulicConductance(0.0055f);
 
+    planthydraulics.groupPrimitivesIntoPlantObject(leaf_UUIDs);
     planthydraulics.setModelCoefficients(phmc);
 
 

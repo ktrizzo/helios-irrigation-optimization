@@ -438,8 +438,8 @@ void PlantHydraulicsModel::groupPrimitivesIntoPlantObject(const std::vector<uint
             }
         }
 
-        int plantID = context->addPolymeshObject(UUIDs);
-        context->setPrimitiveData(UUIDs, "plantID", plantID);
+        //int plantID = context->addPolymeshObject(UUIDs);
+        //context->setPrimitiveData(UUIDs, "plantID", plantID);
     }
 }
 
