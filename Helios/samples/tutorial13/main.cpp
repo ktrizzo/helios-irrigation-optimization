@@ -161,7 +161,11 @@ int main() {
 
     context.loadXML("../xml/6_20_2024_CIMIS.xml");
 
-    for (int hour = 7; hour < 18; hour++) {
+    std::vector<float> psis = {};
+
+    int startHour = 7;
+    int endHour = 18;
+    for (int hour = startHour; hour < endHour; hour++) {
 
         Time time(hour, 0, 0);
         context.setTime(time);
@@ -217,13 +221,17 @@ int main() {
             float E, A, WUE, psi;
             context.getPrimitiveData(UUID, "latent_flux", E);
             context.getPrimitiveData(UUID, "net_photosynthesis", A);
-            psi_canopy = planthydraulics.getStemWaterPotentialOfPlant(0);
+
             E_canopy += E / 44000 * 1000; // mmol H2O / m^2 / sec
             A_canopy += A; // umol CO2 / m^2 / sec
 
             WUE = A / (E / 44000 * 1000); // umol CO2/mmol H2O
             context.setPrimitiveData(UUID, "WUE", WUE);
         }
+
+        psi_canopy = planthydraulics.getStemWaterPotentialOfPlant(0);
+        psis.at(hour-startHour) = psi_canopy;
+
         float WUE_canopy = A_canopy / E_canopy; // umol CO2/mmol H2O
 
         std::cout << "WUE of the canopy = " << WUE_canopy << " umol CO2/mmol H2O" << std::endl;
@@ -241,6 +249,11 @@ int main() {
         sprintf(time_string, "%02d:%02d", time.hour, time.minute);
         visualizer.addTextboxByCenter(time_string, make_vec3(0.5, 0.9, 0), nullrotation, RGB::black, 16, "Arial", Visualizer::COORDINATES_WINDOW_NORMALIZED);
         visualizer.printWindow(); // !!! Close the window to advance to the next time step
+    }
+
+    printf("Hour PsiStem");
+    for (int i=0;i<psis.size();i++) {
+        printf("%d %f\n",i+startHour,psis.at(i));
     }
 
     return 0;
