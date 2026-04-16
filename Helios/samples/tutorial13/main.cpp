@@ -270,7 +270,9 @@ int main() {
         {"gs", {0.f, 0.01f, 1.f, ParameterType::FLOAT}},
     };
 
-    CMAES cmaes;
-    popt.setAlgorithm(cmaes);
-    auto result = popt.run(sim,params);
+    GradientFunction gradient = makeFDGradient(sim,0.1);
+
+    LBFGS lbfgs;
+    popt.setAlgorithm(lbfgs);
+    auto result = popt.run(sim,params,gradient);
 }
