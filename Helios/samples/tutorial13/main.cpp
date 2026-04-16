@@ -267,7 +267,7 @@ auto sim = [](const ParametersToOptimize& p) {
 int main() {
     ParameterOptimization popt;
     popt.print_progress = true;
-    popt.write_result_to_file = "results";
+    popt.write_result_to_file = "results.csv";
     ParametersToOptimize params = {
         {"gs", {0.f, 0.01f, 1.f, ParameterType::FLOAT}},
     };
