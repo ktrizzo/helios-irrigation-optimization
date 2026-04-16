@@ -140,8 +140,8 @@ int main() {
     PlantHydraulicsModelCoefficients phmc;
     phmc.setLeafHydraulicCapacitanceFromLibrary("walnut");
     phmc.setLeafHydraulicConductance(0.0055f,-1.f,1.f);
-    phmc.setStemHydraulicConductance(0.0055f);
-    phmc.setRootHydraulicConductance(0.0055f);
+    phmc.setStemHydraulicConductance(0.055f);
+    phmc.setRootHydraulicConductance(0.055f);
 
     planthydraulics.groupPrimitivesIntoPlantObject(leaf_UUIDs);
     context.setPrimitiveData(leaf_UUIDs, "plantID", 0);
